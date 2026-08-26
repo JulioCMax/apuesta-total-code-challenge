@@ -34,6 +34,13 @@ var (
 	// and the identical request may simply be retried. The HTTP layer maps
 	// it to a retryable 503, never to an unclassified 500.
 	ErrConcurrencyConflict = errors.New("betslip: placement could not be committed due to concurrent contention")
+
+	// ErrInvalidCursor is returned when a GET /bets pagination cursor
+	// cannot be decoded back into a DynamoDB key (malformed base64, or
+	// malformed JSON once decoded). It is a caller input error, never an
+	// infrastructure failure, so the HTTP layer maps it to 400
+	// VALIDATION_ERROR instead of an unclassified 500.
+	ErrInvalidCursor = errors.New("betslip: invalid pagination cursor")
 )
 
 // ErrSameEventCombo is returned when 2+ selections in a combo belong to the

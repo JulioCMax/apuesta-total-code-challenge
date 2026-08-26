@@ -118,3 +118,44 @@ func TestBets_CallerWithNoBetsReceivesEmptyList(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	require.Empty(t, resp.Items)
 }
+
+// TestBets_InvalidLimitReturns400ValidationError proves a `limit` query
+// param that is non-numeric, negative, or out of DynamoDB's int32 Limit
+// range is rejected with the standard VALIDATION_ERROR envelope instead of
+// reaching the repository, where it previously either caused a DynamoDB
+// ValidationException (500) or silently wrapped to an unintended value
+// (finding W-limit).
+func TestBets_InvalidLimitReturns400ValidationError(t *testing.T) {
+	tests := []struct {
+		name  string
+		limit string
+	}{
+		{"non-numeric", "abc"},
+		{"negative after int32 overflow", "2147483648"},
+		{"wraps to a small positive after uint32 overflow", "4294967297"},
+		{"negative", "-1"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			history := &fakeBetHistory{byUser: map[string][]domainbetslip.Bet{
+				"user-a": {{ID: "bet-a1"}},
+			}}
+			verifier := security.NewJWT("test-secret", time.Hour)
+			r := newBetsRouter(t, history, verifier)
+
+			token, _, err := verifier.Issue(account.User{ID: "user-a", Email: "a@apuestatotal.com"})
+			require.NoError(t, err)
+
+			req := httptest.NewRequest(http.MethodGet, "/bets?limit="+tt.limit, nil)
+			req.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusBadRequest, w.Code)
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+			require.Equal(t, "VALIDATION_ERROR", body["error"].(map[string]any)["code"])
+		})
+	}
+}

@@ -116,6 +116,8 @@ func Classify(err error) (status int, code, message string, details map[string]a
 		return http.StatusUnprocessableEntity, "SELECTION_UNAVAILABLE", "Una de las selecciones indicadas no está disponible.", nil
 	case errors.Is(err, domainbetslip.ErrEmptySlip):
 		return http.StatusBadRequest, "VALIDATION_ERROR", "Debe indicar al menos una selección.", nil
+	case errors.Is(err, domainbetslip.ErrInvalidCursor):
+		return http.StatusBadRequest, "VALIDATION_ERROR", "El cursor de paginación no es válido.", nil
 	case errors.Is(err, domainbetslip.ErrIdempotencyKeyReuse):
 		return http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "La clave de idempotencia ya fue utilizada con datos diferentes.", nil
 	case errors.Is(err, domainbetslip.ErrConcurrencyConflict):

@@ -373,7 +373,13 @@ func (r *BetRepository) ListByUser(ctx context.Context, userID string, limit int
 	if cursor != "" {
 		key, err := decodeCursor(cursor)
 		if err != nil {
-			return nil, "", fmt.Errorf("dynamo: list by user: invalid cursor: %w", err)
+			// A malformed cursor (bad base64, or valid base64 that does not
+			// decode to the expected JSON shape) is a caller input error,
+			// not an infrastructure failure: wrap it in the typed
+			// ErrInvalidCursor so the HTTP layer answers 400
+			// VALIDATION_ERROR instead of an unclassified 500 (finding
+			// W-cursor).
+			return nil, "", fmt.Errorf("dynamo: list by user: %w: %v", domainbetslip.ErrInvalidCursor, err)
 		}
 		input.ExclusiveStartKey = key
 	}

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"math"
 	"net/http"
 	"strconv"
 
@@ -29,9 +30,18 @@ func NewBets(history *appauth.History) *Bets {
 func (h *Bets) List(c *gin.Context) {
 	limit := 0
 	if raw := c.Query("limit"); raw != "" {
-		if n, err := strconv.Atoi(raw); err == nil {
-			limit = n
+		n, err := strconv.Atoi(raw)
+		// n must fit the int32 range: BetRepository.ListByUser casts limit
+		// straight into DynamoDB's QueryInput.Limit (*int32). A non-numeric
+		// value, a negative value, or a value beyond math.MaxInt32 (which
+		// previously either produced a DynamoDB ValidationException — a 500
+		// — or silently wrapped to an unintended small limit) is rejected
+		// here instead (finding W-limit).
+		if err != nil || n < 0 || n > math.MaxInt32 {
+			apperror.WriteStatus(c, http.StatusBadRequest, "VALIDATION_ERROR", "El parámetro limit debe ser un entero no negativo válido.")
+			return
 		}
+		limit = n
 	}
 
 	result, err := h.history.Execute(c.Request.Context(), appauth.HistoryCommand{

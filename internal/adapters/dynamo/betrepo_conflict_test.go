@@ -192,3 +192,19 @@ func TestBetRepository_Place_DoesNotRetryConditionalCheckFailure(t *testing.T) {
 	require.False(t, errors.Is(err, domainbetslip.ErrConcurrencyConflict))
 	require.Equal(t, 2, store.calls(), "attempt 1 debits, attempt 2 persists the rejection — no retry in between")
 }
+
+// TestBetRepository_ListByUser_MalformedCursorIsTypedValidationError proves
+// a malformed pagination cursor (e.g. `?cursor=%%%`, not valid base64) is
+// reported as a typed domainbetslip.ErrInvalidCursor the HTTP layer maps to
+// 400 VALIDATION_ERROR, instead of an unclassified error that falls through
+// to 500 (finding W-cursor).
+func TestBetRepository_ListByUser_MalformedCursorIsTypedValidationError(t *testing.T) {
+	store := &stubBetStore{}
+	repo := dynamo.NewBetRepository(store, "test-table", time.Hour)
+
+	_, _, err := repo.ListByUser(context.Background(), "user-1", 0, "%%%")
+
+	require.Error(t, err)
+	require.ErrorIs(t, err, domainbetslip.ErrInvalidCursor,
+		"a malformed cursor must be a typed validation error, never an unclassified internal error")
+}
