@@ -1,0 +1,998 @@
+openapi: 3.0.3
+info:
+  title: Apuesta Total — API de Apuestas Mundial 2026
+  version: "1.0.0"
+  description: >-
+    API REST para consultar eventos del Mundial 2026, calcular y registrar
+    apuestas (sencillas y combinadas), y consultar saldo e historial de un
+    usuario demo autenticado. Este documento describe exactamente la
+    implementación real del servicio (rutas, formas de solicitud/respuesta y
+    el sobre de error único).
+
+
+    Todos los montos monetarios y cuotas se representan como números JSON
+    sin comillas, con exactamente dos decimales fijos (por ejemplo,
+    `100.00` o `1.85`) — nunca como cadenas de texto.
+
+
+    Todas las respuestas de error, sin excepción, usan el mismo sobre:
+
+    ```json
+    {
+      "error": { "code": "VALIDATION_ERROR", "message": "...", "details": {} },
+      "requestId": "a1b2c3d4e5f6a7b8"
+    }
+    ```
+  contact:
+    name: Apuesta Total — Reto técnico
+externalDocs:
+  description: Especificación OpenAPI cruda (esta misma información en YAML)
+  url: /openapi.yaml
+
+servers:
+  - url: http://localhost:8080
+    description: Entorno local (docker-compose)
+  - url: /
+    description: Mismo origen del servidor que sirve esta documentación (Lambda Function URL en AWS)
+
+tags:
+  - name: Salud
+    description: Verificación de disponibilidad del servicio.
+  - name: Documentación
+    description: Especificación OpenAPI y esta interfaz de documentación interactiva.
+  - name: Autenticación
+    description: Inicio de sesión del usuario demo y consulta de saldo.
+  - name: Eventos
+    description: Catálogo de eventos del Mundial 2026 (fase de grupos).
+  - name: Boleto de apuestas
+    description: Cálculo de cuotas/retornos y registro de una apuesta.
+  - name: Apuestas
+    description: Historial de apuestas del usuario autenticado.
+
+security: []
+
+paths:
+  /health:
+    get:
+      tags: [Salud]
+      summary: Verificar disponibilidad del servicio
+      description: >-
+        Sonda de vida pública, sin límite de tasa ni autenticación. Útil para
+        verificaciones de despliegue y balanceadores de carga.
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: El servicio está disponible.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                version: "1.0.0"
+
+  /openapi.yaml:
+    get:
+      tags: [Documentación]
+      summary: Obtener la especificación OpenAPI en formato YAML
+      description: Devuelve este mismo documento tal como está embebido en el binario del servicio.
+      operationId: getOpenAPISpec
+      security: []
+      responses:
+        "200":
+          description: Documento OpenAPI 3 en YAML.
+          content:
+            application/yaml:
+              schema:
+                type: string
+
+  /docs:
+    get:
+      tags: [Documentación]
+      summary: Interfaz interactiva de documentación (Swagger UI)
+      description: >-
+        Página HTML autocontenida que renderiza esta especificación mediante
+        una copia vendorizada de Swagger UI incluida en el binario (sin CDN),
+        de modo que funciona sin conexión a internet.
+      operationId: getDocs
+      security: []
+      responses:
+        "200":
+          description: Página HTML de la documentación interactiva.
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /api/v1/auth/login:
+    post:
+      tags: [Autenticación]
+      summary: Iniciar sesión con un usuario demo
+      description: >-
+        Valida las credenciales contra el usuario sembrado y, si son
+        correctas, emite un token JWT (HS256, 1 hora de vigencia por
+        defecto) que debe enviarse como `Authorization: Bearer <token>` en
+        toda ruta protegida.
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+            example:
+              email: demo1@apuestatotal.com
+              password: Demo1234!
+      responses:
+        "200":
+          description: Autenticación exitosa.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+              example:
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                expiresIn: 3600
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          description: Credenciales inválidas.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: INVALID_CREDENTIALS
+                  message: Credenciales inválidas.
+                requestId: a1b2c3d4e5f6a7b8
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/events:
+    get:
+      tags: [Eventos]
+      summary: Listar eventos por rango de fechas
+      description: >-
+        Devuelve un arreglo JSON plano (no envuelto en un objeto) con los
+        eventos cuya fecha de inicio cae dentro de `[from, to]`, ambos
+        límites inclusive. Un límite omitido deja ese lado abierto. Un valor
+        `to` de solo fecha (`YYYY-MM-DD`) se extiende hasta el último
+        instante de ese día calendario, de modo que el día completo queda
+        incluido.
+      operationId: listEvents
+      security: []
+      parameters:
+        - name: from
+          in: query
+          required: false
+          description: >-
+            Límite inferior del rango, inclusive. Acepta una marca de tiempo
+            RFC 3339 completa o una fecha `YYYY-MM-DD`. Si se omite, no hay
+            límite inferior.
+          schema:
+            type: string
+          example: "2026-06-11"
+        - name: to
+          in: query
+          required: false
+          description: >-
+            Límite superior del rango, inclusive. Acepta una marca de tiempo
+            RFC 3339 completa o una fecha `YYYY-MM-DD` (extendida al final de
+            ese día). Si se omite, no hay límite superior.
+          schema:
+            type: string
+          example: "2026-06-15"
+      responses:
+        "200":
+          description: Lista de eventos dentro del rango solicitado (puede ser vacía).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EventSummary"
+        "400":
+          description: El rango de fechas es inválido (parámetro no parseable o `from` posterior a `to`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                parametroInvalido:
+                  summary: Parámetro no parseable
+                  value:
+                    error:
+                      code: VALIDATION_ERROR
+                      message: El parámetro 'from' no es una fecha válida.
+                    requestId: a1b2c3d4e5f6a7b8
+                rangoInvertido:
+                  summary: Rango invertido (from > to)
+                  value:
+                    error:
+                      code: INVALID_DATE_RANGE
+                      message: El rango de fechas indicado no es válido.
+                    requestId: a1b2c3d4e5f6a7b8
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/events/{id}:
+    get:
+      tags: [Eventos]
+      summary: Obtener el detalle de un evento
+      description: >-
+        Devuelve un evento con sus mercados (en el orden fijo por defecto:
+        `ML0`, `OU200`, `QA158`, `ML235`) y las banderas de configuración a
+        nivel de evento (`settings`).
+      operationId: getEventDetail
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador del evento.
+          schema:
+            type: string
+          example: "784926067864698880"
+      responses:
+        "200":
+          description: Detalle del evento solicitado.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventDetail"
+        "404":
+          description: El evento solicitado no existe.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: EVENT_NOT_FOUND
+                  message: El evento solicitado no existe.
+                requestId: a1b2c3d4e5f6a7b8
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/betslip/calculate:
+    post:
+      tags: [Boleto de apuestas]
+      summary: Calcular cuotas y retornos potenciales de un boleto
+      description: >-
+        Resuelve las selecciones indicadas contra el catálogo de eventos y
+        calcula, para el monto de apuesta (`stake`) dado, cada apuesta
+        sencilla y, si hay 2 o más selecciones de eventos distintos, una
+        apuesta combinada. Este endpoint es público y no persiste nada; el
+        registro real ocurre en `POST /betslip/place`. Los límites de monto
+        (`minStake`/`maxStake`) y la moneda provienen de la configuración del
+        servidor, nunca de valores fijos en el cliente.
+      operationId: calculateBetSlip
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BetSlipRequest"
+            example:
+              selectionIds:
+                - 0ML784926076341366984H
+                - 0QA784926076341367023Q1714Q0
+              stake: 100
+      responses:
+        "200":
+          description: Cotización calculada correctamente.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalculateResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "422":
+          $ref: "#/components/responses/BetSlipBusinessRuleError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/betslip/place:
+    post:
+      tags: [Boleto de apuestas]
+      summary: Registrar una apuesta
+      description: >-
+        Requiere autenticación. Debita el saldo del usuario y persiste la
+        apuesta de forma atómica; si el saldo es insuficiente, la apuesta se
+        persiste igualmente con estado `rejected` y **no** se debita nada
+        (respuesta 409 con el detalle del rechazo). El encabezado opcional
+        `Idempotency-Key` permite reintentar la misma solicitud de forma
+        segura: una repetición con la misma clave devuelve el resultado ya
+        registrado (200, con el encabezado `Idempotent-Replay: true`) en
+        lugar de crear una segunda apuesta.
+      operationId: placeBet
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          description: >-
+            Clave de idempotencia elegida por el cliente (letras, dígitos,
+            guion y guion bajo; máximo 128 caracteres). Si se omite, la
+            solicitud no participa en deduplicación.
+          schema:
+            type: string
+          example: 3f7a1e2b-4c9d-4a6e-9b1a-2d5c8e0f1a2b
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BetSlipRequest"
+            example:
+              selectionIds:
+                - 0ML784926076341366984H
+              stake: 100
+      responses:
+        "201":
+          description: Apuesta registrada y aceptada.
+          headers:
+            Idempotent-Replay:
+              description: Ausente en una creación nueva; presente ("true") solo en una repetición.
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceResponse"
+        "200":
+          description: >-
+            Repetición de una solicitud ya procesada con la misma
+            `Idempotency-Key` y el mismo cuerpo: se devuelve el resultado
+            registrado originalmente (aceptado o rechazado), sin ejecutar un
+            segundo débito.
+          headers:
+            Idempotent-Replay:
+              description: Siempre "true" en este caso.
+              schema:
+                type: string
+              example: "true"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaceResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          description: >-
+            Saldo insuficiente (la apuesta fue persistida con estado
+            `rejected`, sin débito) o la `Idempotency-Key` fue reutilizada
+            con un cuerpo distinto.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              examples:
+                saldoInsuficiente:
+                  summary: Saldo insuficiente (apuesta rechazada y persistida)
+                  value:
+                    error:
+                      code: INSUFFICIENT_FUNDS
+                      message: Saldo insuficiente para realizar la apuesta.
+                      details:
+                        betId: 01J8Z9K3XG7QW2R4T6Y8V0B1C3
+                        status: rejected
+                        rejectionReason: insufficient_funds
+                        balance: 50.00
+                        required: 100.00
+                    requestId: a1b2c3d4e5f6a7b8
+                claveReutilizada:
+                  summary: Idempotency-Key reutilizada con un cuerpo distinto
+                  value:
+                    error:
+                      code: IDEMPOTENCY_KEY_REUSED
+                      message: La clave de idempotencia ya fue utilizada con datos diferentes.
+                    requestId: a1b2c3d4e5f6a7b8
+        "422":
+          $ref: "#/components/responses/BetSlipBusinessRuleError"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          description: >-
+            Contención de concurrencia agotó los reintentos internos; nada
+            fue debitado ni persistido. La misma solicitud puede reintentarse
+            de forma segura.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: SERVICE_UNAVAILABLE
+                  message: El servicio está temporalmente ocupado. Vuelva a intentarlo en unos instantes.
+                requestId: a1b2c3d4e5f6a7b8
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/balance:
+    get:
+      tags: [Autenticación]
+      summary: Consultar el saldo del usuario autenticado
+      operationId: getBalance
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Saldo actual del usuario.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BalanceResponse"
+              example:
+                balance: 1000.00
+                currency: PEN
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+  /api/v1/bets:
+    get:
+      tags: [Apuestas]
+      summary: Listar el historial de apuestas del usuario autenticado
+      description: >-
+        Devuelve tanto apuestas aceptadas como rechazadas (registro de
+        auditoría), paginadas de la más reciente a la más antigua. El
+        usuario proviene exclusivamente del JWT verificado; nunca de un
+        parámetro de consulta.
+      operationId: listBets
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: Número máximo de apuestas a devolver. Debe ser un entero no negativo.
+          schema:
+            type: integer
+            minimum: 0
+          example: 20
+        - name: cursor
+          in: query
+          required: false
+          description: Cursor de paginación devuelto por una llamada anterior en `nextCursor`.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Página del historial de apuestas del usuario.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BetsResponse"
+        "400":
+          description: El parámetro `limit` o `cursor` no es válido.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+              example:
+                error:
+                  code: VALIDATION_ERROR
+                  message: El parámetro limit debe ser un entero no negativo válido.
+                requestId: a1b2c3d4e5f6a7b8
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "500":
+          $ref: "#/components/responses/InternalError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >-
+        Token emitido por `POST /api/v1/auth/login`. Enviar como
+        `Authorization: Bearer <token>`. Firmado con HS256 y verificado con
+        una lista explícita de algoritmos permitidos (nunca `alg: none`).
+
+  responses:
+    ValidationError:
+      description: >-
+        El cuerpo o los parámetros de la solicitud no son válidos (JSON mal
+        formado, campo requerido ausente, monto de apuesta no numérico o
+        de magnitud inaceptable, etc.).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error:
+              code: VALIDATION_ERROR
+              message: Debe indicar al menos una selección y un monto de apuesta válido.
+            requestId: a1b2c3d4e5f6a7b8
+    Unauthorized:
+      description: Falta el encabezado `Authorization`, o el token es inválido o expiró.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error:
+              code: UNAUTHORIZED
+              message: Debe autenticarse para acceder a este recurso.
+            requestId: a1b2c3d4e5f6a7b8
+    RateLimited:
+      description: Se excedió el límite de solicitudes por dirección IP.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error:
+              code: RATE_LIMITED
+              message: Se excedió el límite de solicitudes permitidas. Intente nuevamente más tarde.
+            requestId: a1b2c3d4e5f6a7b8
+    InternalError:
+      description: Error interno no clasificado.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          example:
+            error:
+              code: INTERNAL_ERROR
+              message: Ocurrió un error interno inesperado.
+            requestId: a1b2c3d4e5f6a7b8
+    BetSlipBusinessRuleError:
+      description: >-
+        La combinación de selecciones o el monto viola una regla de negocio
+        del boleto de apuestas.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorEnvelope"
+          examples:
+            mismoEvento:
+              summary: Dos selecciones del mismo evento en una combinada
+              value:
+                error:
+                  code: SAME_EVENT_COMBO
+                  message: La combinada no puede incluir dos selecciones del mismo evento.
+                  details:
+                    eventId: "784926067864698880"
+                requestId: a1b2c3d4e5f6a7b8
+            fueraDeRango:
+              summary: Monto fuera del rango permitido
+              value:
+                error:
+                  code: STAKE_OUT_OF_RANGE
+                  message: El monto de la apuesta está fuera del rango permitido.
+                  details:
+                    min: 1.00
+                    max: 10000.00
+                    got: 0.50
+                requestId: a1b2c3d4e5f6a7b8
+            seleccionNoEncontrada:
+              summary: Una selección no existe en el catálogo
+              value:
+                error:
+                  code: SELECTION_NOT_FOUND
+                  message: Una de las selecciones indicadas no existe.
+                  details:
+                    selectionId: no-existe
+                requestId: a1b2c3d4e5f6a7b8
+            seleccionDuplicada:
+              summary: La misma selección aparece repetida
+              value:
+                error:
+                  code: DUPLICATE_SELECTION
+                  message: No se puede repetir la misma selección en la apuesta.
+                requestId: a1b2c3d4e5f6a7b8
+            demasiadasSelecciones:
+              summary: Se superó el máximo de selecciones configurado
+              value:
+                error:
+                  code: TOO_MANY_SELECTIONS
+                  message: Se superó el número máximo de selecciones permitidas.
+                requestId: a1b2c3d4e5f6a7b8
+            seleccionNoDisponible:
+              summary: La selección está deshabilitada
+              value:
+                error:
+                  code: SELECTION_UNAVAILABLE
+                  message: Una de las selecciones indicadas no está disponible.
+                requestId: a1b2c3d4e5f6a7b8
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          example: ok
+        version:
+          type: string
+          example: "1.0.0"
+
+    Money:
+      type: number
+      description: >-
+        Monto monetario, serializado como número JSON sin comillas con
+        exactamente dos decimales fijos (por ejemplo, `100.00`).
+      example: 100.00
+
+    Odds:
+      type: number
+      description: >-
+        Cuota, serializada como número JSON sin comillas con exactamente dos
+        decimales fijos (por ejemplo, `1.85`).
+      example: 1.85
+
+    ErrorBody:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Código de error estable y legible por máquina.
+          enum:
+            - VALIDATION_ERROR
+            - INVALID_DATE_RANGE
+            - UNAUTHORIZED
+            - INVALID_CREDENTIALS
+            - EVENT_NOT_FOUND
+            - NOT_FOUND
+            - METHOD_NOT_ALLOWED
+            - INSUFFICIENT_FUNDS
+            - IDEMPOTENCY_KEY_REUSED
+            - SAME_EVENT_COMBO
+            - STAKE_OUT_OF_RANGE
+            - DUPLICATE_SELECTION
+            - TOO_MANY_SELECTIONS
+            - SELECTION_NOT_FOUND
+            - SELECTION_UNAVAILABLE
+            - RATE_LIMITED
+            - SERVICE_UNAVAILABLE
+            - INTERNAL_ERROR
+        message:
+          type: string
+          description: Mensaje en español, seguro de mostrar directamente al usuario final.
+        details:
+          type: object
+          nullable: true
+          description: Información adicional específica del error (varía según `code`).
+          additionalProperties: true
+
+    ErrorEnvelope:
+      type: object
+      required: [error, requestId]
+      description: >-
+        Sobre único usado por TODA respuesta de error de esta API, sin
+        excepción (incluye 400/401/404/405/409/422/429/500/503).
+      properties:
+        error:
+          $ref: "#/components/schemas/ErrorBody"
+        requestId:
+          type: string
+          description: Identificador de la solicitud, también devuelto en el encabezado `X-Request-Id`.
+          example: a1b2c3d4e5f6a7b8
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+          example: demo1@apuestatotal.com
+        password:
+          type: string
+          format: password
+          example: Demo1234!
+
+    LoginResponse:
+      type: object
+      required: [token, expiresIn]
+      properties:
+        token:
+          type: string
+          description: Token JWT firmado con HS256.
+        expiresIn:
+          type: integer
+          format: int64
+          description: Vigencia del token en segundos.
+          example: 3600
+
+    MarketTypeResponse:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+          description: >-
+            Identificador estable del tipo de mercado. Los cuatro tipos por
+            defecto son `ML0` (resultado del partido 1X2), `OU200` (total de
+            goles), `QA158` (ambos equipos anotan) y `ML235` (primer gol).
+          example: ML0
+
+    EventSelectionResponse:
+      type: object
+      required: [id, name, odds, isDisabled]
+      properties:
+        id:
+          type: string
+          example: 0ML784926076341366984H
+        name:
+          type: string
+          example: México
+        line:
+          type: string
+          nullable: true
+          description: Línea/hándicap de la selección, cuando el mercado la tiene (por ejemplo, en totales).
+        odds:
+          $ref: "#/components/schemas/Odds"
+        isDisabled:
+          type: boolean
+
+    MarketResponse:
+      type: object
+      required: [id, marketType, name, selections]
+      properties:
+        id:
+          type: string
+        marketType:
+          $ref: "#/components/schemas/MarketTypeResponse"
+        name:
+          type: string
+          example: Resultado del partido (1X2)
+        selections:
+          type: array
+          items:
+            $ref: "#/components/schemas/EventSelectionResponse"
+
+    EventSettings:
+      type: object
+      required: [hasStatistics, isBetBuilderEnabled]
+      properties:
+        hasStatistics:
+          type: boolean
+        isBetBuilderEnabled:
+          type: boolean
+
+    EventSummary:
+      type: object
+      required: [id, name, startsAt, league, home, away, phase, isLive, isSuspended]
+      properties:
+        id:
+          type: string
+          example: "784926067864698880"
+        name:
+          type: string
+          example: México vs Sudáfrica
+        startsAt:
+          type: string
+          format: date-time
+          example: "2026-06-11T19:00:00Z"
+        league:
+          type: string
+          example: Copa Mundial 2026
+        home:
+          type: string
+          example: México
+        away:
+          type: string
+          example: Sudáfrica
+        phase:
+          type: string
+          description: Fase de la competición. El único valor presente en el conjunto de datos 2026 es `group_stage`.
+          example: group_stage
+        group:
+          type: string
+          description: >-
+            Letra de grupo (A–L). Ausente por completo (nunca cadena vacía)
+            cuando no se pudo resolver a partir de los equipos participantes.
+          example: A
+        isLive:
+          type: boolean
+        isSuspended:
+          type: boolean
+
+    EventDetail:
+      allOf:
+        - $ref: "#/components/schemas/EventSummary"
+        - type: object
+          required: [settings, markets]
+          properties:
+            settings:
+              $ref: "#/components/schemas/EventSettings"
+            markets:
+              type: array
+              description: Siempre en el orden fijo por defecto ML0, OU200, QA158, ML235.
+              items:
+                $ref: "#/components/schemas/MarketResponse"
+
+    BetSlipRequest:
+      type: object
+      required: [selectionIds, stake]
+      properties:
+        selectionIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          description: Uno o más identificadores de selección a apostar.
+        stake:
+          type: number
+          description: >-
+            Monto de la apuesta. Se aplica íntegro a cada apuesta sencilla y
+            a la combinada (si la hay), no se divide entre selecciones.
+          example: 100
+
+    ResolvedSelectionResponse:
+      type: object
+      required: [id, eventId, odds]
+      properties:
+        id:
+          type: string
+        eventId:
+          type: string
+        odds:
+          $ref: "#/components/schemas/Odds"
+
+    SingleResponse:
+      type: object
+      required: [selectionId, odds, potentialReturns]
+      properties:
+        selectionId:
+          type: string
+        odds:
+          $ref: "#/components/schemas/Odds"
+        potentialReturns:
+          $ref: "#/components/schemas/Money"
+
+    ComboResponse:
+      type: object
+      description: Presente solo cuando hay 2 o más selecciones de eventos distintos.
+      required: [selectionIds, combinedOdds, potentialReturns]
+      properties:
+        selectionIds:
+          type: array
+          items:
+            type: string
+        combinedOdds:
+          $ref: "#/components/schemas/Odds"
+        potentialReturns:
+          $ref: "#/components/schemas/Money"
+
+    CalculateResponse:
+      type: object
+      required: [minStake, maxStake, currency, stake, selections, singles, combo]
+      properties:
+        minStake:
+          $ref: "#/components/schemas/Money"
+        maxStake:
+          $ref: "#/components/schemas/Money"
+        currency:
+          type: string
+          example: PEN
+        stake:
+          $ref: "#/components/schemas/Money"
+        selections:
+          type: array
+          items:
+            $ref: "#/components/schemas/ResolvedSelectionResponse"
+        singles:
+          type: array
+          items:
+            $ref: "#/components/schemas/SingleResponse"
+        combo:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/ComboResponse"
+
+    PlaceResponse:
+      type: object
+      required: [betId, type, status, stake, combinedOdds, potentialReturns, balanceAfter, createdAt, selections]
+      properties:
+        betId:
+          type: string
+          description: ULID generado por el servidor.
+          example: 01J8Z9K3XG7QW2R4T6Y8V0B1C3
+        type:
+          type: string
+          enum: [single, combo]
+        status:
+          type: string
+          enum: [accepted, rejected]
+        stake:
+          $ref: "#/components/schemas/Money"
+        combinedOdds:
+          $ref: "#/components/schemas/Odds"
+        potentialReturns:
+          $ref: "#/components/schemas/Money"
+        balanceAfter:
+          nullable: true
+          description: >-
+            Saldo del usuario después de la operación. Es `null` únicamente
+            si la apuesta ya fue registrada correctamente pero la lectura
+            posterior del saldo (puramente informativa) falló; la apuesta
+            en sí nunca se pierde por esta causa.
+          allOf:
+            - $ref: "#/components/schemas/Money"
+        createdAt:
+          type: string
+          format: date-time
+        selections:
+          type: array
+          items:
+            type: string
+
+    BetResponse:
+      type: object
+      required: [betId, type, status, stake, combinedOdds, potentialReturns, createdAt, selections]
+      properties:
+        betId:
+          type: string
+        type:
+          type: string
+          enum: [single, combo]
+        status:
+          type: string
+          enum: [accepted, rejected]
+        rejectionReason:
+          type: string
+          description: Presente solo cuando `status` es `rejected`.
+          example: insufficient_funds
+        stake:
+          $ref: "#/components/schemas/Money"
+        combinedOdds:
+          $ref: "#/components/schemas/Odds"
+        potentialReturns:
+          $ref: "#/components/schemas/Money"
+        createdAt:
+          type: string
+          format: date-time
+        selections:
+          type: array
+          items:
+            type: string
+
+    BetsResponse:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/BetResponse"
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor para la siguiente página, o `null` cuando no hay más resultados.
+
+    BalanceResponse:
+      type: object
+      required: [balance, currency]
+      properties:
+        balance:
+          $ref: "#/components/schemas/Money"
+        currency:
+          type: string
+          example: PEN
