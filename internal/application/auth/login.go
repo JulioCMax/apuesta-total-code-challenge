@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/domain/account"
@@ -48,10 +49,22 @@ func NewLogin(users UserRepository, passwords PasswordVerifier, tokens TokenIssu
 // email exists from the response alone — including from response timing:
 // an unknown email still pays the cost of one bcrypt compare (against
 // dummyPasswordHash) before returning, closing the enumeration timing
-// oracle a bare early-return would otherwise create (finding W-timing).
+// oracle a bare early-return would otherwise create (finding W-timing). A
+// genuine infrastructure failure from FindByEmail (e.g. a throttled
+// EmailIndex query) is a DIFFERENT case and propagates unchanged instead of
+// collapsing into the same 401: it is not a verdict about the caller's
+// credentials, and masking it as one would make a correct user see "wrong
+// password" while monitoring recorded an auth spike instead of the
+// availability incident it actually was (finding R3).
 func (l *Login) Execute(ctx context.Context, cmd LoginCommand) (LoginResult, error) {
 	user, err := l.users.FindByEmail(ctx, cmd.Email)
 	if err != nil {
+		if !errors.Is(err, account.ErrInvalidCredentials) {
+			// Not the port's own "unknown email" signal: a real
+			// infrastructure error, returned as-is so apperror.Classify
+			// maps it to a 5xx.
+			return LoginResult{}, err
+		}
 		_ = l.passwords.Verify(dummyPasswordHash, cmd.Password)
 		return LoginResult{}, account.ErrInvalidCredentials
 	}
