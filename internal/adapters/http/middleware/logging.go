@@ -18,6 +18,14 @@ import (
 // completion it emits one structured JSON log entry with method, path,
 // status, duration_ms, bytes and client_ip (spec: api-platform/Structured
 // JSON Logging).
+//
+// path is c.Request.URL.Path — the literal path the caller requested — not
+// gin's c.FullPath(), which is "" for any request that never matched a
+// route (finding W-logging: every unrouted 404 previously logged an empty
+// path, making it impossible to tell which URL was actually probed). The
+// registered route template is still recorded separately as route, which
+// stays low-cardinality ("/events/:id" instead of "/events/42") for
+// grouping/metrics.
 func Logging(base *slog.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
@@ -29,7 +37,8 @@ func Logging(base *slog.Logger) gin.HandlerFunc {
 
 		reqLogger.Info("request completed",
 			"method", c.Request.Method,
-			"path", c.FullPath(),
+			"path", c.Request.URL.Path,
+			"route", c.FullPath(),
 			"status", c.Writer.Status(),
 			"duration_ms", time.Since(start).Milliseconds(),
 			"bytes", c.Writer.Size(),
