@@ -53,11 +53,31 @@ type TransactionRetryPolicy struct {
 func defaultTransactionRetryPolicy() TransactionRetryPolicy {
 	return TransactionRetryPolicy{
 		MaxAttempts: 4,
-		Backoff: func(attempt int) time.Duration {
-			base := 25 * time.Millisecond << (attempt - 1)
-			return base/2 + time.Duration(rand.Int63n(int64(base/2)+1))
-		},
+		Backoff:     TransactionBackoff,
 	}
+}
+
+// maxTransactionBackoff caps the exponential backoff base TransactionBackoff
+// computes, before jitter is applied.
+const maxTransactionBackoff = 2 * time.Second
+
+// TransactionBackoff computes the default jittered exponential backoff for
+// the given 1-based attempt number: ~25ms, ~50ms, ~100ms, ... up to
+// maxTransactionBackoff, plus up to 50% jitter. It is exported so a caller
+// building a custom TransactionRetryPolicy (via WithTransactionRetry) can
+// reuse this exact, already-hardened shape instead of reimplementing it.
+//
+// The clamp matters beyond the shipped default (MaxAttempts: 4, which never
+// gets close to it): an exported TransactionRetryPolicy with an unusually
+// large MaxAttempts would otherwise left-shift 25ms far enough to overflow
+// time.Duration's int64 range into a non-positive value, and
+// rand.Int63n panics when n <= 0.
+func TransactionBackoff(attempt int) time.Duration {
+	base := 25 * time.Millisecond << (attempt - 1)
+	if base <= 0 || base > maxTransactionBackoff {
+		base = maxTransactionBackoff
+	}
+	return base/2 + time.Duration(rand.Int63n(int64(base/2)+1))
 }
 
 // BetRepositoryOption customises a BetRepository at construction.
@@ -196,8 +216,12 @@ func (r *BetRepository) Place(ctx context.Context, b domainbetslip.Bet, idempote
 // A cancellation that carries ANY ConditionalCheckFailed reason is never
 // retried: that is a verdict about the request (insufficient balance, an
 // already-used idempotency key) and the caller must be answered, not made
-// to wait. Every other error is returned untouched for the caller's own
-// branching.
+// to wait. Beyond TransactionConflict, ThrottlingError,
+// ProvisionedThroughputExceeded and TransactionInProgress are retried the
+// same way — none of them says anything about the request either — and so
+// is an entirely empty CancellationReasons slice, an anomalous shape
+// DynamoDB's own contract should never produce (finding R2). Every other
+// error is returned untouched for the caller's own branching.
 func (r *BetRepository) transactWithConflictRetry(ctx context.Context, items []types.TransactWriteItem) error {
 	maxAttempts := r.retry.MaxAttempts
 	if maxAttempts < 1 {
@@ -215,17 +239,47 @@ func (r *BetRepository) transactWithConflictRetry(ctx context.Context, items []t
 			return err
 		}
 		reasons := canceled.CancellationReasons
-		if !AnyTransactionConflict(reasons) || AnyConditionalCheckFailed(reasons) {
+		transient := len(reasons) == 0 || AnyTransientCancellation(reasons)
+		if !transient || AnyConditionalCheckFailed(reasons) {
 			return err
 		}
 
 		if attempt >= maxAttempts {
-			return fmt.Errorf("dynamo: transaction still contended after %d attempts: %w", attempt, domainbetslip.ErrConcurrencyConflict)
+			// err is embedded with %v, deliberately NOT %w: Place() calls
+			// AsTransactionCanceled on whatever transactWithConflictRetry
+			// returns, and wrapping the raw *TransactionCanceledException
+			// back into the chain here would make that check see this
+			// EXHAUSTED, already-classified error as "still cancelled,
+			// please classify it again", discarding ErrConcurrencyConflict
+			// and re-falling into the untyped "unexpected transaction
+			// cancellation" branch. %v still renders err's own message (and
+			// cancellationCodes(reasons) renders its reason codes
+			// explicitly) into this error's text for logs — previously
+			// dropped entirely — without reopening it to further typed
+			// unwrapping (finding R2).
+			return fmt.Errorf("dynamo: transaction still contended after %d attempts (reason codes=%v): %w (underlying: %v)",
+				attempt, cancellationCodes(reasons), domainbetslip.ErrConcurrencyConflict, err)
 		}
 		if waitErr := sleepCtx(ctx, r.backoff(attempt)); waitErr != nil {
 			return waitErr
 		}
 	}
+}
+
+// cancellationCodes renders a transaction cancellation's reason codes for
+// diagnostics (e.g. the exhausted-retry error above): each entry is the
+// item's Code, or "<nil>" when DynamoDB omitted it — should not happen per
+// its own contract, but defensive since this is only for logs.
+func cancellationCodes(reasons []types.CancellationReason) []string {
+	codes := make([]string, len(reasons))
+	for i, reason := range reasons {
+		if reason.Code == nil {
+			codes[i] = "<nil>"
+			continue
+		}
+		codes[i] = *reason.Code
+	}
+	return codes
 }
 
 // backoff returns the configured wait before the next attempt, tolerating
@@ -371,7 +425,7 @@ func (r *BetRepository) ListByUser(ctx context.Context, userID string, limit int
 		input.Limit = aws.Int32(int32(limit))
 	}
 	if cursor != "" {
-		key, err := decodeCursor(cursor)
+		key, err := decodeCursor(cursor, UserPK(userID))
 		if err != nil {
 			// A malformed cursor (bad base64, or valid base64 that does not
 			// decode to the expected JSON shape) is a caller input error,
@@ -579,7 +633,15 @@ func encodeCursor(key map[string]types.AttributeValue) (string, error) {
 	return base64.URLEncoding.EncodeToString(raw), nil
 }
 
-func decodeCursor(cursor string) (map[string]types.AttributeValue, error) {
+// decodeCursor decodes cursor back into a DynamoDB key, then validates it
+// against expectedPK — the calling user's own partition (UserPK(userID)) —
+// before ever handing it to Query as ExclusiveStartKey. A cursor that is
+// valid base64 AND valid JSON but decodes to an empty key ({} or null) or
+// to a DIFFERENT partition is rejected here rather than reaching DynamoDB:
+// letting it through would surface a ValidationException as an unclassified
+// 500 instead of 400, and would let a caller probe another user's
+// partition by watching how the response differs (finding R1).
+func decodeCursor(cursor, expectedPK string) (map[string]types.AttributeValue, error) {
 	raw, err := base64.URLEncoding.DecodeString(cursor)
 	if err != nil {
 		return nil, err
@@ -587,6 +649,12 @@ func decodeCursor(cursor string) (map[string]types.AttributeValue, error) {
 	var ck cursorKey
 	if err := json.Unmarshal(raw, &ck); err != nil {
 		return nil, err
+	}
+	if ck.PK == "" || ck.SK == "" {
+		return nil, fmt.Errorf("dynamo: cursor decodes to an empty key")
+	}
+	if ck.PK != expectedPK {
+		return nil, fmt.Errorf("dynamo: cursor names a different partition")
 	}
 	return map[string]types.AttributeValue{
 		"PK": &types.AttributeValueMemberS{Value: ck.PK},
