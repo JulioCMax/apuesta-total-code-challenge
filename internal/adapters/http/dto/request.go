@@ -92,6 +92,15 @@ func checkStakeMagnitude(d decimal.Decimal) error {
 	if exp < -maxStakeDecimalPlaces {
 		return fmt.Errorf("%w: more than %d decimal places", ErrStakeMagnitude, maxStakeDecimalPlaces)
 	}
+	// Reject on exp alone BEFORE it is added to NumDigits(): on a 32-bit
+	// GOARCH, int is 32 bits, and an exp already this large could make
+	// exp+NumDigits() overflow and silently wrap negative, passing the very
+	// check meant to reject it. This makes that overflow class unreachable
+	// regardless of target word size — not reachable on the 64-bit targets
+	// this service ships to, but free to close outright.
+	if exp > maxStakeMagnitudeDigits {
+		return fmt.Errorf("%w: more than %d integer digits", ErrStakeMagnitude, maxStakeMagnitudeDigits)
+	}
 	if exp+d.NumDigits() > maxStakeMagnitudeDigits {
 		return fmt.Errorf("%w: more than %d integer digits", ErrStakeMagnitude, maxStakeMagnitudeDigits)
 	}
