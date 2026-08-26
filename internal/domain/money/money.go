@@ -51,6 +51,14 @@ func (m Money) Mul(factor decimal.Decimal) Money {
 	return Money{d: Round2(m.d.Mul(factor))}
 }
 
+// Sub subtracts other from m and rounds the result via Round2. Callers
+// guard against a negative result themselves (e.g. via LessThan) before
+// calling Sub — the "non-negative by construction" invariant is enforced by
+// NewMoney, not on every arithmetic operation, exactly like Mul.
+func (m Money) Sub(other Money) Money {
+	return Money{d: Round2(m.d.Sub(other.d))}
+}
+
 // LessThan reports whether m < other.
 func (m Money) LessThan(other Money) bool {
 	return m.d.LessThan(other.d)
