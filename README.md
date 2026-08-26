@@ -74,6 +74,31 @@ docker compose down -v
 binario, por lo que `/docs` funciona **sin conexión a internet**, sin depender de ningún
 CDN.
 
+### Alternativa: iniciar con doble clic (sin usar una terminal)
+
+Para quienes prefieran no abrir una terminal, el repositorio incluye lanzadores que
+ejecutan exactamente los mismos comandos de esta sección, agregando verificaciones
+previas y una espera activa hasta que la API responde. Complementan el comando
+anterior; no lo reemplazan.
+
+| Sistema operativo | Iniciar | Detener |
+|---|---|---|
+| Windows | doble clic en `start.bat` | doble clic en `stop.bat` |
+| macOS | doble clic en `start.command` | doble clic en `stop.command` |
+
+`start.command` no requiere una variante adicional para Linux: al ser un script de
+`bash` sin dependencias fuera de lo estándar, funciona igual en un entorno de
+escritorio Linux (doble clic, si el gestor de archivos lo permite, o `./start.command`
+desde una terminal).
+
+Antes de levantar el entorno, estos scripts comprueban que Docker esté instalado y que
+el daemon esté en ejecución, y que el puerto 8080 esté libre (o ya ocupado por una
+ejecución previa de esta misma pila). Luego construyen y levantan los contenedores
+mostrando el progreso de la compilación, esperan hasta 120 segundos a que `/health`
+responda y abren automáticamente `http://localhost:8080/docs`. Ante cualquier falla,
+indican una acción concreta (por ejemplo, revisar los registros con
+`docker compose logs api`) en lugar de mostrar únicamente el error de Docker.
+
 ---
 
 ## 2. Endpoints y ejemplos con curl
