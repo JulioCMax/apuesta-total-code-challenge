@@ -53,6 +53,22 @@ func TestMoney_JSONFixed2(t *testing.T) {
 	require.Equal(t, "1234.50", string(raw2))
 }
 
+// TestMoney_SubDebitsExactAmount proves Sub performs exact decimal
+// subtraction with no binary-float drift. Reintroduced (per the Unit 4
+// trim) because the mutex-guarded fake BetRepository in the application
+// layer's concurrency race test needs an exact balance debit (spec: bet-
+// slip-placement/Concurrency-Safe Balance Debit).
+func TestMoney_SubDebitsExactAmount(t *testing.T) {
+	balance, err := money.NewMoneyFromFloat(100)
+	require.NoError(t, err)
+	stake, err := money.NewMoneyFromFloat(37.5)
+	require.NoError(t, err)
+
+	got := balance.Sub(stake)
+
+	require.Equal(t, "62.50", got.String())
+}
+
 // TestOdds_CombineIsRound2Product proves combined odds are computed as the
 // product of the individual odds, rounded exactly once via Round2 (D7).
 func TestOdds_CombineIsRound2Product(t *testing.T) {
