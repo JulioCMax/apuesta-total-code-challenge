@@ -98,9 +98,14 @@ func (h *BetSlip) Calculate(c *gin.Context) {
 }
 
 // Place handles POST /betslip/place (JWT-guarded; spec: bet-slip-
-// placement). It always reads the caller's fresh balance afterward
-// (accepted, replayed-accepted, or rejected) because a rejected placement's
-// 409 envelope also carries the current balance (D15's Responses example).
+// placement). It reads the caller's fresh balance afterward for every
+// outcome Execute returns WITHOUT an error: a freshly accepted placement,
+// and any replayed outcome (accepted or rejected), since D16 resolves a
+// replay with err == nil. A FRESH rejection is different: persistRejection
+// returns domainbetslip.ErrInsufficientFunds as an error, so that case
+// returns early via apperror.Write below, before this fresh balance read
+// ever runs — its 409 envelope's "balance" is the pre-transaction balance
+// carried on that error (D15's Responses example), not a fresh read.
 func (h *BetSlip) Place(c *gin.Context) {
 	var req dto.BetSlipRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
