@@ -107,9 +107,10 @@ func (r *concurrentFakeBetRepository) storedBetCount() int {
 // TransactionConflict cancellation a real contended write produces. The
 // only test that exercises the real repository's own concurrency handling
 // is TestPlaceAtomically_NConcurrentGoroutines_LeavesExactBalance
-// (betrepo_integration_test.go); it requires dynamodb-local and is
-// silently SKIPPED without it (requireDynamoLocal in dynamolocal_test.go
-// logs a loud, unmissable warning on every skip naming exactly this gap).
+// (betrepo_integration_test.go); it requires dynamodb-local and is SKIPPED
+// without it — loudly, not silently: requireDynamoLocal in
+// dynamolocal_test.go logs an unmissable stderr banner on every skip,
+// naming exactly this gap.
 // A green `go test ./...` on a machine with no Docker running proves
 // nothing about that graded requirement.
 //
