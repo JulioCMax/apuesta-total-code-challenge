@@ -106,6 +106,28 @@ func TestPutUserIfAbsent_NeverClobbersAnExistingBalance(t *testing.T) {
 	require.Equal(t, "1000.00", got.String(), "a re-run seed must never clobber a played-with balance")
 }
 
+// TestPutUser_OverwritesAnExistingProfile proves PutUser (unconditional)
+// forces an overwrite of an already-seeded profile, the primitive
+// cmd/seed's SEED_RESET=true flag needs (design.md's seeding contract:
+// "SEED_RESET=true forces an overwrite" — PutUserIfAbsent alone can never
+// satisfy that, since its whole point is refusing to clobber).
+func TestPutUser_OverwritesAnExistingProfile(t *testing.T) {
+	client, table := requireDynamoLocal(t)
+	repo := dynamo.NewUserRepository(client, table)
+	seeded := mustSeedUser(t, repo, "user-5", "reset@apuestatotal.com", 1000)
+
+	reset := seeded
+	resetBalance, err := money.NewMoneyFromFloat(1)
+	require.NoError(t, err)
+	reset.Balance = resetBalance
+
+	require.NoError(t, repo.PutUser(context.Background(), reset))
+
+	got, err := repo.Balance(context.Background(), "user-5")
+	require.NoError(t, err)
+	require.Equal(t, "1.00", got.String(), "PutUser must overwrite the existing balance")
+}
+
 // TestCreateTable_IsIdempotent proves calling EnsureTable a second time
 // against an already-created table is a safe no-op (design.md: "swallow
 // ResourceInUseException"), matching the contract docker-compose's one-shot
