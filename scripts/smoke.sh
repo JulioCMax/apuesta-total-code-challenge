@@ -72,10 +72,16 @@ case "$LAST_BODY" in
 esac
 
 log "3/4 place (${BASE_URL}/api/v1/betslip/place)"
+# The key uses nanosecond time plus $RANDOM (not plain "smoke-$(date +%s)")
+# so two runs within the same second never collide: a collision would make
+# this call a REPLAY of a prior run's key, correctly returning 200 instead
+# of 201, and expect_status below would fail with a misleading message
+# ("expected 201, got 200") that has nothing to do with placement itself.
+# [A-Za-z0-9_-] stays within idempotencyKeyPattern (handler/betslip.go).
 call_api -X POST "${BASE_URL}/api/v1/betslip/place" \
   -H 'Content-Type: application/json' \
   -H "Authorization: Bearer ${TOKEN}" \
-  -H "Idempotency-Key: smoke-$(date +%s)" \
+  -H "Idempotency-Key: smoke-$(date +%s%N)-${RANDOM}" \
   -d "{\"selectionIds\":[\"${SELECTION_ID}\"],\"stake\":10}"
 # A fresh Idempotency-Key against the seeded demo balance must always be
 # accepted (201) — a 409 rejection here is a real failure, not a status
