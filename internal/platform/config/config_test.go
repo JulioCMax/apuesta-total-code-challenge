@@ -73,7 +73,9 @@ func TestLoad_SucceedsWithDefaultsWhenOnlyJWTSecretIsSet(t *testing.T) {
 	require.Equal(t, "info", cfg.LogLevel)
 	require.Equal(t, "us-east-1", cfg.AWSRegion)
 	require.Equal(t, "apuesta-total", cfg.DynamoTable)
-	require.Equal(t, "http://dynamodb:8000", cfg.DynamoEndpoint)
+	// DYNAMO_ENDPOINT is the one variable with no default: empty means
+	// real AWS (see TestLoad_DynamoEndpointDefaultsToEmptyForRealAWS).
+	require.Empty(t, cfg.DynamoEndpoint)
 	require.Equal(t, "local", cfg.AWSAccessKeyID)
 	require.Equal(t, "local", cfg.AWSSecretAccessKey)
 	require.Equal(t, time.Hour, cfg.JWTTTL)
@@ -129,4 +131,33 @@ func TestConfig_LogValueRedactsJWTSecret(t *testing.T) {
 	require.True(t, ok, "config field must be a nested object, not a raw string")
 	require.Equal(t, "REDACTED", configField["jwt_secret"])
 	require.Equal(t, "8080", configField["port"])
+}
+
+// TestLoad_DynamoEndpointDefaultsToEmptyForRealAWS proves the DynamoDB
+// endpoint has NO built-in default. A non-empty default is unreachable
+// through configuration, because getEnv falls back to it whenever the
+// variable is unset OR empty: there would be no way at all to say "talk to
+// real AWS", and every DynamoDB call on Lambda would target the
+// docker-compose hostname. The local stack sets DYNAMO_ENDPOINT
+// explicitly instead (docker-compose.yml).
+func TestLoad_DynamoEndpointDefaultsToEmptyForRealAWS(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("DYNAMO_ENDPOINT", "")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	require.Empty(t, cfg.DynamoEndpoint, "an empty DYNAMO_ENDPOINT must mean real AWS, never a hardcoded local hostname")
+}
+
+// TestLoad_DynamoEndpointHonoursAnExplicitLocalValue is the triangulation
+// case: docker-compose's explicit endpoint must still reach the config.
+func TestLoad_DynamoEndpointHonoursAnExplicitLocalValue(t *testing.T) {
+	t.Setenv("JWT_SECRET", "test-secret")
+	t.Setenv("DYNAMO_ENDPOINT", "http://dynamodb:8000")
+
+	cfg, err := config.Load()
+
+	require.NoError(t, err)
+	require.Equal(t, "http://dynamodb:8000", cfg.DynamoEndpoint)
 }

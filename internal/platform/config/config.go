@@ -58,7 +58,14 @@ func Load() (Config, error) {
 	cfg.LogLevel = getEnv("LOG_LEVEL", "info")
 	cfg.AWSRegion = getEnv("AWS_REGION", "us-east-1")
 	cfg.DynamoTable = getEnv("DYNAMO_TABLE", "apuesta-total")
-	cfg.DynamoEndpoint = getEnv("DYNAMO_ENDPOINT", "http://dynamodb:8000")
+	// DYNAMO_ENDPOINT deliberately has NO default. getEnv falls back to a
+	// default whenever the variable is unset OR empty, so a non-empty
+	// default would be unreachable through configuration: there would be
+	// no way at all to express "talk to real AWS", and every DynamoDB call
+	// on Lambda would target the docker-compose hostname. Empty means real
+	// AWS (SDK endpoint discovery); the local stack sets it explicitly in
+	// docker-compose.yml.
+	cfg.DynamoEndpoint = os.Getenv("DYNAMO_ENDPOINT")
 	cfg.AWSAccessKeyID = getEnv("AWS_ACCESS_KEY_ID", "local")
 	cfg.AWSSecretAccessKey = getEnv("AWS_SECRET_ACCESS_KEY", "local")
 
