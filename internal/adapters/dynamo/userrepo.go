@@ -1,0 +1,225 @@
+package dynamo
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+
+	"github.com/JulioCMax/apuesta-total-code-challenge/internal/domain/account"
+	"github.com/JulioCMax/apuesta-total-code-challenge/internal/domain/money"
+)
+
+// ErrUserAlreadyExists is returned by PutUserIfAbsent when a profile item
+// already exists at the same partition key: a re-run seed must never
+// clobber a played-with balance (design.md's seeding contract).
+var ErrUserAlreadyExists = errors.New("dynamo: user already exists")
+
+// entityTypeProfile is the entityType attribute value stamped on every
+// user profile item.
+const entityTypeProfile = "Profile"
+
+// UserRepository implements application/auth.UserRepository against the
+// single-table design's user profile item (PK=USER#<id>, SK=PROFILE) and
+// its EmailIndex GSI.
+type UserRepository struct {
+	client *dynamodb.Client
+	table  string
+}
+
+// NewUserRepository builds a UserRepository backed by client, targeting
+// table.
+func NewUserRepository(client *dynamodb.Client, table string) *UserRepository {
+	return &UserRepository{client: client, table: table}
+}
+
+// PutUserIfAbsent inserts u's profile item unless one already exists at
+// the same partition key. cmd/seed (Phase 13) uses this to seed demo users
+// idempotently on every boot; SEED_RESET is handled by that caller, not
+// here.
+func (r *UserRepository) PutUserIfAbsent(ctx context.Context, u account.User) error {
+	_, err := r.client.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName:           aws.String(r.table),
+		Item:                userItemAttrs(u),
+		ConditionExpression: aws.String("attribute_not_exists(PK)"),
+	})
+	if err != nil {
+		var condFailed *types.ConditionalCheckFailedException
+		if errors.As(err, &condFailed) {
+			return ErrUserAlreadyExists
+		}
+		return fmt.Errorf("dynamo: put user: %w", err)
+	}
+	return nil
+}
+
+// FindByEmail queries the EmailIndex GSI. The GSI's projection is
+// deliberately narrow — INCLUDE [userId, passwordHash, balance]
+// (design.md) — because that is exactly what application/auth.Login
+// needs (verify the password, issue a token carrying the id; the email
+// itself is already known from the request). Currency and CreatedAt are
+// therefore always zero-valued on the returned User: a caller needing the
+// full profile must read it via Balance's PK/SK GetItem path instead. An
+// unseeded email returns account.ErrInvalidCredentials — the same error a
+// wrong password produces — so a caller can never learn whether an email
+// exists (spec: auth-and-balance/Demo User Login Issuing JWT).
+func (r *UserRepository) FindByEmail(ctx context.Context, email string) (account.User, error) {
+	out, err := r.client.Query(ctx, &dynamodb.QueryInput{
+		TableName:              aws.String(r.table),
+		IndexName:              aws.String("EmailIndex"),
+		KeyConditionExpression: aws.String("GSI1PK = :gsi1pk"),
+		ExpressionAttributeValues: map[string]types.AttributeValue{
+			":gsi1pk": &types.AttributeValueMemberS{Value: EmailGSI1PK(email)},
+		},
+		Limit: aws.Int32(1),
+	})
+	if err != nil {
+		return account.User{}, fmt.Errorf("dynamo: find by email: %w", err)
+	}
+	if len(out.Items) == 0 {
+		return account.User{}, account.ErrInvalidCredentials
+	}
+
+	item := out.Items[0]
+	userID, ok := attrString(item, "userId")
+	if !ok {
+		return account.User{}, fmt.Errorf("dynamo: email index item missing userId")
+	}
+	passwordHash, _ := attrString(item, "passwordHash")
+	balance, err := UnmarshalMoney(item["balance"])
+	if err != nil {
+		return account.User{}, fmt.Errorf("dynamo: email index item: %w", err)
+	}
+
+	return account.User{
+		ID:           userID,
+		Email:        email,
+		PasswordHash: passwordHash,
+		Balance:      balance,
+	}, nil
+}
+
+// Balance reads the current balance from the user's profile item.
+func (r *UserRepository) Balance(ctx context.Context, userID string) (money.Money, error) {
+	out, err := r.client.GetItem(ctx, &dynamodb.GetItemInput{
+		TableName: aws.String(r.table),
+		Key: map[string]types.AttributeValue{
+			"PK": &types.AttributeValueMemberS{Value: UserPK(userID)},
+			"SK": &types.AttributeValueMemberS{Value: ProfileSK()},
+		},
+	})
+	if err != nil {
+		return money.Money{}, fmt.Errorf("dynamo: balance: %w", err)
+	}
+	if out.Item == nil {
+		return money.Money{}, fmt.Errorf("dynamo: balance: user %q not found", userID)
+	}
+	balAV, ok := out.Item["balance"]
+	if !ok {
+		return money.Money{}, fmt.Errorf("dynamo: balance: user %q missing balance attribute", userID)
+	}
+	return UnmarshalMoney(balAV)
+}
+
+// userItemAttrs builds the full user profile item. Note this carries more
+// fields (email, currency, createdAt, entityType) than the EmailIndex GSI
+// projects — those extra fields are only ever read via a direct PK/SK
+// lookup (Balance today; a future full-profile read tomorrow), never via
+// FindByEmail.
+func userItemAttrs(u account.User) map[string]types.AttributeValue {
+	return map[string]types.AttributeValue{
+		"PK":           &types.AttributeValueMemberS{Value: UserPK(u.ID)},
+		"SK":           &types.AttributeValueMemberS{Value: ProfileSK()},
+		"userId":       &types.AttributeValueMemberS{Value: u.ID},
+		"email":        &types.AttributeValueMemberS{Value: u.Email},
+		"passwordHash": &types.AttributeValueMemberS{Value: u.PasswordHash},
+		"balance":      MarshalMoney(u.Balance),
+		"currency":     &types.AttributeValueMemberS{Value: u.Currency},
+		"createdAt":    &types.AttributeValueMemberS{Value: u.CreatedAt.Format(time.RFC3339Nano)},
+		"GSI1PK":       &types.AttributeValueMemberS{Value: EmailGSI1PK(u.Email)},
+		"entityType":   &types.AttributeValueMemberS{Value: entityTypeProfile},
+	}
+}
+
+// attrString extracts a string (S) attribute from item, reporting false
+// when the key is absent or holds a different attribute type.
+func attrString(item map[string]types.AttributeValue, key string) (string, bool) {
+	av, ok := item[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := av.(*types.AttributeValueMemberS)
+	if !ok {
+		return "", false
+	}
+	return s.Value, true
+}
+
+// EnsureTable creates the single table (10/10 provisioned, EmailIndex
+// 5/5) if it does not already exist, waits for it to become ACTIVE, and
+// enables TTL on expiresAt. Idempotent: ResourceInUseException from a
+// concurrent or repeated create is swallowed (design.md's seeding
+// contract, shared by docker-compose's one-shot seeder and
+// scripts/deploy-aws.sh).
+func EnsureTable(ctx context.Context, client *dynamodb.Client, tableName string) error {
+	_, err := client.CreateTable(ctx, &dynamodb.CreateTableInput{
+		TableName: aws.String(tableName),
+		AttributeDefinitions: []types.AttributeDefinition{
+			{AttributeName: aws.String("PK"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("SK"), AttributeType: types.ScalarAttributeTypeS},
+			{AttributeName: aws.String("GSI1PK"), AttributeType: types.ScalarAttributeTypeS},
+		},
+		KeySchema: []types.KeySchemaElement{
+			{AttributeName: aws.String("PK"), KeyType: types.KeyTypeHash},
+			{AttributeName: aws.String("SK"), KeyType: types.KeyTypeRange},
+		},
+		ProvisionedThroughput: &types.ProvisionedThroughput{
+			ReadCapacityUnits:  aws.Int64(10),
+			WriteCapacityUnits: aws.Int64(10),
+		},
+		GlobalSecondaryIndexes: []types.GlobalSecondaryIndex{
+			{
+				IndexName: aws.String("EmailIndex"),
+				KeySchema: []types.KeySchemaElement{
+					{AttributeName: aws.String("GSI1PK"), KeyType: types.KeyTypeHash},
+				},
+				Projection: &types.Projection{
+					ProjectionType:   types.ProjectionTypeInclude,
+					NonKeyAttributes: []string{"userId", "passwordHash", "balance"},
+				},
+				ProvisionedThroughput: &types.ProvisionedThroughput{
+					ReadCapacityUnits:  aws.Int64(5),
+					WriteCapacityUnits: aws.Int64(5),
+				},
+			},
+		},
+	})
+	if err != nil {
+		var inUse *types.ResourceInUseException
+		if errors.As(err, &inUse) {
+			return nil
+		}
+		return fmt.Errorf("dynamo: create table: %w", err)
+	}
+
+	waiter := dynamodb.NewTableExistsWaiter(client)
+	if err := waiter.Wait(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(tableName)}, 30*time.Second); err != nil {
+		return fmt.Errorf("dynamo: wait table active: %w", err)
+	}
+
+	if _, err := client.UpdateTimeToLive(ctx, &dynamodb.UpdateTimeToLiveInput{
+		TableName: aws.String(tableName),
+		TimeToLiveSpecification: &types.TimeToLiveSpecification{
+			AttributeName: aws.String("expiresAt"),
+			Enabled:       aws.Bool(true),
+		},
+	}); err != nil {
+		return fmt.Errorf("dynamo: enable ttl: %w", err)
+	}
+
+	return nil
+}
