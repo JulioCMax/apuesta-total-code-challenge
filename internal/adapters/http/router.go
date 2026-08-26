@@ -71,6 +71,13 @@ func NewRouter(deps Dependencies) (*gin.Engine, error) {
 
 	r.GET("/health", handler.Health(deps.Version))
 
+	// GET /docs and GET /openapi.yaml sit at the same top level as /health
+	// (design.md's HTTP Layer route table: Public section lists all three
+	// together), outside /api/v1 — never rate-limited, never JWT-guarded
+	// (Phase 14).
+	r.GET("/openapi.yaml", handler.OpenAPISpec())
+	r.GET("/docs", handler.Docs())
+
 	rateLimit, err := middleware.RateLimit(deps.RateLimit)
 	if err != nil {
 		return nil, err
