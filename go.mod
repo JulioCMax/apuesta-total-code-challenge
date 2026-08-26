@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.39
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.38
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.63.5
+	github.com/aws/smithy-go v1.27.10
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/oklog/ulid/v2 v2.1.2
 	github.com/shopspring/decimal v1.4.0
@@ -26,6 +27,5 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sso v1.33.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.38.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.45.8 // indirect
-	github.com/aws/smithy-go v1.27.10 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 )
