@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/adapters/memory"
+	domainbetslip "github.com/JulioCMax/apuesta-total-code-challenge/internal/domain/betslip"
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/domain/event"
 )
 
@@ -108,6 +109,44 @@ func TestGroupSeed_CoversEveryEvent(t *testing.T) {
 		require.Falsef(t, e.Group.IsEmpty(), "event %s (%s) resolved to an empty group", e.ID, e.Name)
 		require.Equal(t, event.PhaseGroupStage, e.Phase)
 	}
+}
+
+// TestSelectionsByIDs_ResolvesRealSelectionRef proves SelectionsByIDs
+// implements application/betslip.EventCatalog against the real embedded
+// dataset: a known selection ID resolves to its ID/EventID/Odds/
+// IsDisabled (spec: bet-slip-calculation/Selection Resolution). This is
+// the port the Phase 13 composition root wires into betslip.Calculate/
+// Place instead of the fakes application-layer tests use — deferred since
+// Unit 5 (no RED test drove it until this real wiring needed it, per
+// strict TDD's Three Laws).
+func TestSelectionsByIDs_ResolvesRealSelectionRef(t *testing.T) {
+	repo := newRepo(t)
+
+	// México vs Sudáfrica's 1X2 market, "México" selection.
+	const selectionID = "0ML784926076341366984H"
+
+	refs, err := repo.SelectionsByIDs(context.Background(), []string{selectionID})
+
+	require.NoError(t, err)
+	require.Len(t, refs, 1)
+	require.Equal(t, selectionID, refs[0].ID)
+	require.Equal(t, "784926067864698880", refs[0].EventID)
+	require.Equal(t, "1.47", refs[0].Odds.String())
+	require.False(t, refs[0].IsDisabled)
+}
+
+// TestSelectionsByIDs_UnknownIDReturnsTypedError proves an unresolved
+// selection ID surfaces as the typed domain error the application layer
+// expects, never a generic error (spec: bet-slip-calculation/Selection
+// Resolution, "Unknown selection ID").
+func TestSelectionsByIDs_UnknownIDReturnsTypedError(t *testing.T) {
+	repo := newRepo(t)
+
+	_, err := repo.SelectionsByIDs(context.Background(), []string{"does-not-exist"})
+
+	var notFound domainbetslip.ErrSelectionNotFound
+	require.ErrorAs(t, err, &notFound)
+	require.Equal(t, "does-not-exist", notFound.SelectionID)
 }
 
 // TestGroupSeed_UnknownTeamFallsBackToEmptyGroup proves the fallback path
