@@ -9,20 +9,23 @@ import (
 	"time"
 
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/adapters/memory/seed"
+	domainbetslip "github.com/JulioCMax/apuesta-total-code-challenge/internal/domain/betslip"
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/domain/event"
 )
 
-// EventRepository serves the seeded event catalog: date-range listing and
-// detail lookup, both backed by a slice sorted once at load time plus a
-// byID index.
+// EventRepository serves the seeded event catalog: date-range listing,
+// detail lookup, and selection resolution, all backed by a slice sorted
+// once at load time plus byID/bySelectionID indexes. It implements both
+// application/event.EventCatalog and application/betslip.EventCatalog.
 type EventRepository struct {
-	events []event.Event
-	byID   map[string]event.Event
+	events        []event.Event
+	byID          map[string]event.Event
+	bySelectionID map[string]event.SelectionRef
 }
 
 // NewEventRepository decodes the embedded seed dataset (seed.Data), applies
 // the load-time market filter/sort and group/phase enrichment, and builds
-// the lookup index. An error here means the embedded data itself is
+// the lookup indexes. An error here means the embedded data itself is
 // malformed — a boot-time failure, since the data is compiled into the
 // binary and never expected to change at runtime.
 func NewEventRepository() (*EventRepository, error) {
@@ -32,11 +35,20 @@ func NewEventRepository() (*EventRepository, error) {
 	}
 
 	byID := make(map[string]event.Event, len(events))
+	bySelectionID := make(map[string]event.SelectionRef)
 	for _, e := range events {
 		byID[e.ID] = e
+		for _, m := range e.Markets {
+			for _, s := range m.Selections {
+				bySelectionID[s.ID] = event.SelectionRef{
+					ID: s.ID, EventID: s.EventID, MarketID: s.MarketID,
+					Name: s.Name, Odds: s.Odds, IsDisabled: s.IsDisabled,
+				}
+			}
+		}
 	}
 
-	return &EventRepository{events: events, byID: byID}, nil
+	return &EventRepository{events: events, byID: byID, bySelectionID: bySelectionID}, nil
 }
 
 // List returns every seeded event whose StartsAt falls within [from, to],
@@ -71,4 +83,20 @@ func (r *EventRepository) Detail(_ context.Context, id string) (event.Event, err
 		return event.Event{}, event.ErrEventNotFound
 	}
 	return e, nil
+}
+
+// SelectionsByIDs resolves ids against the load-time selection index,
+// implementing application/betslip.EventCatalog. A missing id returns the
+// typed domainbetslip.ErrSelectionNotFound{SelectionID: id} the application
+// layer expects (spec: bet-slip-calculation/Selection Resolution).
+func (r *EventRepository) SelectionsByIDs(_ context.Context, ids []string) ([]event.SelectionRef, error) {
+	refs := make([]event.SelectionRef, 0, len(ids))
+	for _, id := range ids {
+		ref, ok := r.bySelectionID[id]
+		if !ok {
+			return nil, domainbetslip.ErrSelectionNotFound{SelectionID: id}
+		}
+		refs = append(refs, ref)
+	}
+	return refs, nil
 }
