@@ -106,6 +106,13 @@ func main() {
 		Addr:              ":" + cfg.Port,
 		Handler:           engine,
 		ReadHeaderTimeout: 5 * time.Second,
+		// ReadTimeout/WriteTimeout bound the entire request/response cycle,
+		// not just the headers: without them a slow-body attacker (or a
+		// client that never finishes sending) can hold a connection open
+		// indefinitely even though middleware.BodyLimit already caps how
+		// many bytes it may eventually send (finding W-body).
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
 	}
 
 	serverErr := make(chan error, 1)

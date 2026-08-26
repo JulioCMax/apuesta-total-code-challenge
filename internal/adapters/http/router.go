@@ -8,9 +8,11 @@ package http
 
 import (
 	"log/slog"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/JulioCMax/apuesta-total-code-challenge/internal/adapters/http/apperror"
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/adapters/http/handler"
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/adapters/http/middleware"
 )
@@ -45,7 +47,27 @@ func NewRouter(deps Dependencies) (*gin.Engine, error) {
 	r := gin.New()
 	r.SetTrustedProxies(nil)
 
-	r.Use(middleware.Recovery(), middleware.RequestID(), middleware.Logging(deps.Logger))
+	// HandleMethodNotAllowed is false by default in gin, which means an
+	// existing path called with an unsupported method falls straight
+	// through to NoRoute (404) instead of NoMethod (405). Both NoRoute and
+	// NoMethod are registered below with the same standard error envelope
+	// (finding W-router): without them gin serves its own plain-text
+	// "404 page not found" body, with no requestId and no JSON shape, which
+	// also silently defeats logging.Path (finding W-logging).
+	r.HandleMethodNotAllowed = true
+	r.NoRoute(func(c *gin.Context) {
+		apperror.WriteStatus(c, http.StatusNotFound, "NOT_FOUND", "El recurso solicitado no existe.")
+	})
+	r.NoMethod(func(c *gin.Context) {
+		apperror.WriteStatus(c, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "El método HTTP no está permitido para este recurso.")
+	})
+
+	r.Use(
+		middleware.Recovery(),
+		middleware.RequestID(),
+		middleware.Logging(deps.Logger),
+		middleware.BodyLimit(middleware.DefaultMaxRequestBodyBytes),
+	)
 
 	r.GET("/health", handler.Health(deps.Version))
 

@@ -270,6 +270,65 @@ func TestErrorEnvelope_ShapeIsIdenticalAcrossCodes(t *testing.T) {
 	}
 }
 
+// TestRouter_UnmatchedRouteReturns404StandardEnvelope proves an unrouted
+// path answers through the same {"error":{"code","message"},"requestId"}
+// envelope as every other failure, instead of gin's default plain-text
+// "404 page not found" with no requestId (finding W-router).
+func TestRouter_UnmatchedRouteReturns404StandardEnvelope(t *testing.T) {
+	r, _ := newTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/does-not-exist", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusNotFound, w.Code)
+	var env apperror.Envelope
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
+	require.NotEmpty(t, env.Error.Code)
+	require.NotEmpty(t, env.Error.Message)
+	require.NotEmpty(t, env.RequestID, "an unrouted request must still carry a requestId")
+}
+
+// TestRouter_UnmatchedMethodReturns405StandardEnvelope proves an existing
+// path called with a method it does not support answers 405 through the
+// same standard envelope, rather than gin's default plain-text response
+// (finding W-router).
+func TestRouter_UnmatchedMethodReturns405StandardEnvelope(t *testing.T) {
+	r, _ := newTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodPost, "/health", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusMethodNotAllowed, w.Code)
+	var env apperror.Envelope
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
+	require.NotEmpty(t, env.Error.Code)
+	require.NotEmpty(t, env.Error.Message)
+	require.NotEmpty(t, env.RequestID)
+}
+
+// TestRouter_OversizeBodyReturnsStandardValidationEnvelope proves a request
+// body larger than the configured cap fails through the standard
+// VALIDATION_ERROR envelope instead of being read unbounded into memory
+// (finding W-body).
+func TestRouter_OversizeBodyReturnsStandardValidationEnvelope(t *testing.T) {
+	r, _ := newTestRouter(t)
+
+	oversizedPadding := strings.Repeat("a", 2<<20) // 2 MiB, over the 1 MiB cap
+	body := `{"selectionIds":["s1"],"stake":10,"padding":"` + oversizedPadding + `"}`
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/betslip/calculate", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var env apperror.Envelope
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
+	require.Equal(t, "VALIDATION_ERROR", env.Error.Code)
+}
+
 func topLevelKeys(m map[string]any) []string {
 	keys := make([]string, 0, len(m))
 	for k := range m {
