@@ -172,4 +172,3 @@ func TestCalculate_MalformedBodyReturns400ValidationEnvelope(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.Equal(t, "VALIDATION_ERROR", body["error"].(map[string]any)["code"])
 }
-
