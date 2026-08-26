@@ -70,10 +70,13 @@ type rawMarketType struct {
 }
 
 type rawSelection struct {
-	ID         string   `json:"_id"`
-	MarketID   string   `json:"MarketId"`
-	EventID    string   `json:"EventId"`
-	Name       string   `json:"Name"`
+	ID       string `json:"_id"`
+	MarketID string `json:"MarketId"`
+	EventID  string `json:"EventId"`
+	Name     string `json:"Name"`
+	// Side is the source dataset's outcome position: 1 home, 2 draw,
+	// 3 away. It is the ordering signal used by orderSelections below.
+	Side       int      `json:"Side"`
 	Points     *float64 `json:"Points"`
 	TrueOdds   float64  `json:"TrueOdds"`
 	IsDisabled bool     `json:"IsDisabled"`
@@ -212,8 +215,52 @@ func buildMarkets(eventID string, raw []rawMarket) ([]event.Market, error) {
 	return markets, nil
 }
 
+// orderSelections returns the market's selections in display order.
+//
+// The source dataset lists a three-way market draw-first (Side 2, 1, 3),
+// while every betting interface — the reference design included — presents
+// 1X2 as local, draw, visitor. Side already encodes exactly that (1 home,
+// 2 draw, 3 away), so sorting by it produces the conventional order without
+// parsing names or ID suffixes.
+//
+// The sort is applied ONLY when every Side in the market is distinct, and
+// that condition is the whole safeguard. Total Goals reuses the same two
+// values across its lines (every "Más de" is side 1, every "Menos de" is
+// side 3), so there Side is not an ordering at all: sorting by it would
+// group all the overs together and destroy the line pairing that the source
+// order carries. A market whose Sides repeat is left exactly as the dataset
+// listed it.
+//
+// The input slice is never reordered in place: it belongs to the decoded
+// seed document, and mutating it would make the load order-dependent.
+func orderSelections(raw []rawSelection) []rawSelection {
+	if !sidesAreDistinct(raw) {
+		return raw
+	}
+
+	ordered := make([]rawSelection, len(raw))
+	copy(ordered, raw)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].Side < ordered[j].Side
+	})
+	return ordered
+}
+
+// sidesAreDistinct reports whether Side is a total order for this market,
+// which is what makes it usable as the display order.
+func sidesAreDistinct(raw []rawSelection) bool {
+	seen := make(map[int]struct{}, len(raw))
+	for _, rs := range raw {
+		if _, duplicate := seen[rs.Side]; duplicate {
+			return false
+		}
+		seen[rs.Side] = struct{}{}
+	}
+	return true
+}
+
 // buildSelections maps the raw selections of one market into domain
-// Selections.
+// Selections, in the display order orderSelections defines.
 //
 // A small number of seed selections are disabled placeholders carrying a
 // TrueOdds below the domain minimum (e.g. 0) — real betting odds that were
@@ -224,7 +271,7 @@ func buildMarkets(eventID string, raw []rawMarket) ([]event.Market, error) {
 // defect and still fails loudly.
 func buildSelections(raw []rawSelection) ([]event.Selection, error) {
 	selections := make([]event.Selection, 0, len(raw))
-	for _, rs := range raw {
+	for _, rs := range orderSelections(raw) {
 		odds, err := money.NewOddsFromFloat(rs.TrueOdds)
 		if err != nil {
 			if !rs.IsDisabled {

@@ -187,7 +187,18 @@ curl -s http://localhost:8080/api/v1/events/784926067864698880
 
 Los mercados se devuelven siempre en el mismo orden fijo —`ML0` (Resultado del partido
 1X2), `OU200` (Total de goles), `QA158` (Ambos equipos anotan), `ML235` (Primer gol)—, y
-las banderas de interfaz viajan en `settings`, a nivel de **evento**:
+las banderas de interfaz viajan en `settings`, a nivel de **evento**.
+
+Dentro de cada mercado, las selecciones de tres vías (`ML0` y `ML235`) se sirven **local,
+empate, visitante**. El conjunto de datos de origen las lista con el empate primero, así
+que es un reordenamiento real: la señal es el campo `Side` del dataset (1 local, 2 empate,
+3 visitante), no el nombre ni el sufijo del identificador. El reordenamiento se aplica
+**sólo cuando los `Side` del mercado son todos distintos**, y esa condición es la
+salvaguarda: en Total de goles el mismo `Side` se repite por cada línea (todo «Más de» es
+1, todo «Menos de» es 3), de modo que ahí `Side` no es un orden y ordenar por él agruparía
+todos los «Más de» rompiendo el emparejamiento por línea. Ese mercado se sirve tal como
+viene. Ambos casos están cubiertos por pruebas en
+[`eventrepo_test.go`](internal/adapters/memory/eventrepo_test.go).
 
 ```json
 {
@@ -202,8 +213,8 @@ las banderas de interfaz viajan en `settings`, a nivel de **evento**:
       "marketType": { "id": "ML0" },
       "name": "Resultado del partido (1X2)",
       "selections": [
-        { "id": "0ML784926076341366984D", "name": "Empate",    "odds": 4.34, "isDisabled": false },
         { "id": "0ML784926076341366984H", "name": "México",    "odds": 1.47, "isDisabled": false },
+        { "id": "0ML784926076341366984D", "name": "Empate",    "odds": 4.34, "isDisabled": false },
         { "id": "0ML784926076341366984A", "name": "Sudáfrica", "odds": 6.30, "isDisabled": false }
       ]
     }

@@ -830,7 +830,10 @@ components:
           properties:
             markets:
               type: array
-              description: Siempre en el orden fijo por defecto ML0, OU200, QA158, ML235.
+              description: >-
+                Siempre en el orden fijo por defecto ML0, OU200, QA158, ML235.
+                Dentro de cada mercado, las selecciones de tres vías (ML0 y
+                ML235) se sirven local, empate, visitante.
               items:
                 $ref: "#/components/schemas/MarketResponse"
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/adapters/memory"
@@ -173,4 +174,96 @@ func TestGroupSeed_UnknownTeamFallsBackToEmptyGroup(t *testing.T) {
 			})
 		})
 	}
+}
+
+// TestDetail_MoneylineSelectionsInHomeDrawAwayOrder proves the outcomes of a
+// three-way market are served local-draw-visitor, the order every betting
+// UI (and the reference design) presents 1X2 in.
+//
+// The source dataset lists them draw-first, so this is a real reordering:
+// the ordering signal is the raw Side field (1 home, 2 draw, 3 away), not
+// the position the file happens to use.
+func TestDetail_MoneylineSelectionsInHomeDrawAwayOrder(t *testing.T) {
+	repo := newRepo(t)
+
+	e, err := repo.Detail(context.Background(), "784926067864698880") // México vs Sudáfrica
+	require.NoError(t, err)
+
+	for _, typeID := range []event.MarketTypeID{event.MarketTypeMoneyline, event.MarketTypeFirstGoal} {
+		market := marketOfType(t, e, typeID)
+		require.Len(t, market.Selections, 3, "market %s", typeID)
+		require.Equal(t, e.Home.Name, market.Selections[0].Name, "market %s: home goes first", typeID)
+		require.Equal(t, e.Away.Name, market.Selections[2].Name, "market %s: away goes last", typeID)
+	}
+}
+
+// TestDetail_EveryMoneylineMarketOrdersHomeFirst is the catalog-wide guard
+// for the rule above: no seeded three-way market may present the away side
+// before the home side.
+func TestDetail_EveryMoneylineMarketOrdersHomeFirst(t *testing.T) {
+	repo := newRepo(t)
+
+	events, err := repo.List(context.Background(), time.Time{}, time.Time{})
+	require.NoError(t, err)
+	require.NotEmpty(t, events)
+
+	checked := 0
+	for _, summary := range events {
+		e, err := repo.Detail(context.Background(), summary.ID)
+		require.NoError(t, err)
+
+		for _, market := range e.Markets {
+			if market.TypeID != event.MarketTypeMoneyline && market.TypeID != event.MarketTypeFirstGoal {
+				continue
+			}
+			require.Len(t, market.Selections, 3)
+			require.Equal(t, e.Home.Name, market.Selections[0].Name,
+				"event %s market %s", e.ID, market.TypeID)
+			require.Equal(t, e.Away.Name, market.Selections[2].Name,
+				"event %s market %s", e.ID, market.TypeID)
+			checked++
+		}
+	}
+	require.Positive(t, checked, "the guard must actually inspect three-way markets")
+}
+
+// TestDetail_OverUnderKeepsSourcePairing is the counterpart guard. Total
+// Goals repeats the same Side across its lines (every "Más de" is side 1,
+// every "Menos de" is side 3), so Side is not an ordering there: sorting by
+// it would group all the overs together and break the line pairing the
+// source order carries. Consecutive selections must stay paired on one
+// line, with lines ascending.
+func TestDetail_OverUnderKeepsSourcePairing(t *testing.T) {
+	repo := newRepo(t)
+
+	e, err := repo.Detail(context.Background(), "784926067864698880")
+	require.NoError(t, err)
+
+	market := marketOfType(t, e, event.MarketTypeTotalGoals)
+	require.GreaterOrEqual(t, len(market.Selections), 4)
+	require.Zero(t, len(market.Selections)%2, "over/under selections come in pairs")
+
+	previousLine := decimal.NewFromInt(-1)
+	for i := 0; i < len(market.Selections); i += 2 {
+		over, under := market.Selections[i], market.Selections[i+1]
+		require.NotNil(t, over.Line)
+		require.NotNil(t, under.Line)
+		require.True(t, over.Line.Equal(*under.Line),
+			"positions %d and %d must share a line", i, i+1)
+		require.True(t, over.Line.GreaterThan(previousLine), "lines must ascend")
+		previousLine = *over.Line
+	}
+}
+
+// marketOfType returns the event's market of the given type, failing the
+// test when it is absent.
+func marketOfType(t *testing.T, e event.Event, typeID event.MarketTypeID) event.Market {
+	t.Helper()
+	for _, market := range e.Markets {
+		if market.TypeID == typeID {
+			return market
+		}
+	}
+	t.Fatalf("event %s has no market of type %s", e.ID, typeID)
+	return event.Market{}
 }
