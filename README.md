@@ -599,9 +599,9 @@ sequenceDiagram
     participant A as Solicitud A
     participant B as Solicitud B
     participant D as DynamoDB con saldo 100
-    par Simultáneas
+    par Solicitud A
         A->>D: Transacción con condición saldo mayor o igual a 100
-    and
+    and Solicitud B
         B->>D: Transacción con condición saldo mayor o igual a 100
     end
     D-->>A: Confirmada, el saldo pasa de 100 a 0
