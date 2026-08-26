@@ -171,12 +171,32 @@ func TestPlaceResponseFromDomain_MapsBetAndBalance(t *testing.T) {
 		CreatedAt: time.Date(2026, 6, 11, 19, 0, 0, 0, time.UTC),
 	}
 
-	resp := dto.PlaceResponseFromDomain(bet, mustMoney(t, 900))
+	balance := mustMoney(t, 900)
+	resp := dto.PlaceResponseFromDomain(bet, &balance)
 
 	require.Equal(t, "bet-1", resp.BetID)
 	require.Equal(t, "accepted", resp.Status)
+	require.NotNil(t, resp.BalanceAfter)
 	require.Equal(t, "900.00", resp.BalanceAfter.String())
 	require.Equal(t, []string{"s1"}, resp.Selections)
+
+	raw, err := json.Marshal(resp)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"balanceAfter":900.00`, "a known balance must stay an unquoted fixed-2 number")
+}
+
+// TestPlaceResponseFromDomain_UnreadableBalanceMarshalsAsNull proves the
+// response still describes the committed bet when the post-placement
+// balance could not be read, rendering balanceAfter as an explicit null
+// rather than a misleading 0.00.
+func TestPlaceResponseFromDomain_UnreadableBalanceMarshalsAsNull(t *testing.T) {
+	bet := domainbetslip.Bet{ID: "bet-1", Status: domainbetslip.BetStatusAccepted, Stake: mustMoney(t, 100), CombinedOdds: mustOdds(t, 1.85), PotentialReturns: mustMoney(t, 185)}
+
+	raw, err := json.Marshal(dto.PlaceResponseFromDomain(bet, nil))
+
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"balanceAfter":null`)
+	require.Contains(t, string(raw), `"betId":"bet-1"`)
 }
 
 // TestBetsResponseFromDomain_MapsItemsAndCursor proves the history response

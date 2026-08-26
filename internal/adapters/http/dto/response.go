@@ -212,23 +212,32 @@ func CalculateResponseFromDomain(result appbetslip.CalculateResult) CalculateRes
 // --- BetSlip place ----------------------------------------------------------
 
 // PlaceResponse is the JSON body of a successful POST /betslip/place
-// (design.md's HTTP Layer section). BalanceAfter is read via a separate
-// balance query, since BetRepository.Place returns only the stored bet.
+// (design.md's HTTP Layer section).
+//
+// BalanceAfter is a POINTER on purpose. The debit and the bet are written
+// by one atomic transaction, which cannot return the post-update image, so
+// the balance is read separately afterwards purely to render this field.
+// That read is cosmetic and the placement is already committed by then: if
+// it fails, the response still carries the bet and BalanceAfter marshals
+// as an explicit null. Failing the whole response instead would tell the
+// caller the placement failed and throw away the betId.
 type PlaceResponse struct {
-	BetID            string      `json:"betId"`
-	Type             string      `json:"type"`
-	Status           string      `json:"status"`
-	Stake            money.Money `json:"stake"`
-	CombinedOdds     money.Odds  `json:"combinedOdds"`
-	PotentialReturns money.Money `json:"potentialReturns"`
-	BalanceAfter     money.Money `json:"balanceAfter"`
-	CreatedAt        time.Time   `json:"createdAt"`
-	Selections       []string    `json:"selections"`
+	BetID            string       `json:"betId"`
+	Type             string       `json:"type"`
+	Status           string       `json:"status"`
+	Stake            money.Money  `json:"stake"`
+	CombinedOdds     money.Odds   `json:"combinedOdds"`
+	PotentialReturns money.Money  `json:"potentialReturns"`
+	BalanceAfter     *money.Money `json:"balanceAfter"`
+	CreatedAt        time.Time    `json:"createdAt"`
+	Selections       []string     `json:"selections"`
 }
 
 // PlaceResponseFromDomain converts an accepted (or replayed-accepted) Bet
-// plus the caller's current balance into its JSON shape.
-func PlaceResponseFromDomain(bet domainbetslip.Bet, balanceAfter money.Money) PlaceResponse {
+// plus the caller's current balance into its JSON shape. A nil
+// balanceAfter means the post-placement balance could not be read; the
+// placement itself still stands.
+func PlaceResponseFromDomain(bet domainbetslip.Bet, balanceAfter *money.Money) PlaceResponse {
 	return PlaceResponse{
 		BetID:            bet.ID,
 		Type:             string(bet.Type),

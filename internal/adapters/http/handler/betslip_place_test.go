@@ -3,6 +3,7 @@ package handler_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -282,4 +283,56 @@ func TestPlace_AbsurdStakeMagnitudeReturns400WithoutPlacing(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("POST /betslip/place did not answer within 2s: the request reached decimal rounding")
 	}
+}
+
+// failingBalanceUsers is a UserRepository whose balance read always fails,
+// standing in for a throttled or transiently unavailable DynamoDB GetItem
+// immediately after the placement transaction has already committed.
+type failingBalanceUsers struct{}
+
+func (failingBalanceUsers) FindByEmail(context.Context, string) (account.User, error) {
+	return account.User{}, account.ErrInvalidCredentials
+}
+
+func (failingBalanceUsers) Balance(context.Context, string) (money.Money, error) {
+	return money.Money{}, errors.New("dynamo: balance: throttled")
+}
+
+// TestPlace_CommittedPlacementSurvivesAFailingBalanceRead proves a
+// committed placement is NEVER discarded because the follow-up balance
+// read failed.
+//
+// The debit and the bet are written by one atomic transaction; the balance
+// is then read separately, purely to render balanceAfter. Answering 500
+// when only that cosmetic read fails tells the caller the placement
+// failed, throws away the betId, and — since Idempotency-Key is optional —
+// invites a retry that places a SECOND independent bet and debits the user
+// twice. The response must still carry the bet, with balanceAfter
+// explicitly null.
+func TestPlace_CommittedPlacementSurvivesAFailingBalanceRead(t *testing.T) {
+	catalog := newFakeCatalog(domainevent.SelectionRef{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.85)})
+	repo := newFakeBetRepo(mustMoney(t, 1000))
+	verifier := security.NewJWT("test-secret", time.Hour)
+
+	place := appbetslip.NewPlace(catalog, repo, &fakeIDGenerator{pfx: "bet"}, testBounds(t))
+	h := handler.NewBetSlip(nil, place, appauth.NewBalance(failingBalanceUsers{}))
+	r := gin.New()
+	protected := r.Group("/")
+	protected.Use(middleware.JWTAuth(verifier))
+	protected.POST("/betslip/place", h.Place)
+
+	req := httptest.NewRequest(http.MethodPost, "/betslip/place", jsonBody(`{"selectionIds":["s1"],"stake":100}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenFor(t, verifier, "user-1"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code, "a committed placement must never be reported as a failure")
+
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.NotEmpty(t, body["betId"], "the caller must receive the betId of the bet that was actually placed")
+	require.Equal(t, "accepted", body["status"])
+	require.Contains(t, body, "balanceAfter")
+	require.Nil(t, body["balanceAfter"], "an unreadable balance must render as null, never abort the response")
 }

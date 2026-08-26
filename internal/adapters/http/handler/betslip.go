@@ -11,6 +11,8 @@ import (
 	appauth "github.com/JulioCMax/apuesta-total-code-challenge/internal/application/auth"
 	appbetslip "github.com/JulioCMax/apuesta-total-code-challenge/internal/application/betslip"
 	domainbetslip "github.com/JulioCMax/apuesta-total-code-challenge/internal/domain/betslip"
+	"github.com/JulioCMax/apuesta-total-code-challenge/internal/domain/money"
+	"github.com/JulioCMax/apuesta-total-code-challenge/internal/platform/logging"
 )
 
 // messageInsufficientFunds is the Spanish, user-facing message for a
@@ -104,10 +106,22 @@ func (h *BetSlip) Place(c *gin.Context) {
 		c.Header(idempotentReplayHeader, "true")
 	}
 
-	balanceAfter, balErr := h.balance.Execute(c.Request.Context(), userID)
-	if balErr != nil {
-		apperror.Write(c, balErr)
-		return
+	// The placement is already committed at this point: the conditional
+	// debit and the bet were written by one atomic transaction, which
+	// cannot return the post-update image, so the balance is read
+	// separately just to render balanceAfter.
+	//
+	// That read must NEVER be able to fail the response. Answering 500 here
+	// would tell the caller a committed placement failed and would discard
+	// the betId; because Idempotency-Key is optional, the natural retry
+	// would then place a SECOND independent bet and debit the user twice.
+	// A failed read is logged and rendered as a null balance instead.
+	var balanceAfter *money.Money
+	if balance, balErr := h.balance.Execute(c.Request.Context(), userID); balErr != nil {
+		logging.FromContext(c.Request.Context()).Warn("place: post-placement balance read failed; returning the committed placement with a null balance",
+			"error", balErr, "bet_id", result.Bet.ID)
+	} else {
+		balanceAfter = &balance
 	}
 
 	// A replay of a previously rejected key resolves with err == nil (D16 —

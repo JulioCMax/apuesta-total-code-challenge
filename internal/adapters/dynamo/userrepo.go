@@ -117,6 +117,12 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (account
 }
 
 // Balance reads the current balance from the user's profile item.
+//
+// ConsistentRead is mandatory here, not an optimisation. DynamoDB's
+// default eventually-consistent GetItem may serve a replica that has not
+// yet applied the debit the placement transaction just committed, which
+// would render a stale balanceAfter right after a successful placement —
+// the single most confusing thing this API could report.
 func (r *UserRepository) Balance(ctx context.Context, userID string) (money.Money, error) {
 	out, err := r.client.GetItem(ctx, &dynamodb.GetItemInput{
 		TableName: aws.String(r.table),
@@ -124,6 +130,7 @@ func (r *UserRepository) Balance(ctx context.Context, userID string) (money.Mone
 			"PK": &types.AttributeValueMemberS{Value: UserPK(userID)},
 			"SK": &types.AttributeValueMemberS{Value: ProfileSK()},
 		},
+		ConsistentRead: aws.Bool(true),
 	})
 	if err != nil {
 		return money.Money{}, fmt.Errorf("dynamo: balance: %w", err)
