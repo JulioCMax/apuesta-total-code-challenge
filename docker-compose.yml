@@ -1,0 +1,64 @@
+x-app-env: &app-env
+  APP_ENV: local
+  LOG_LEVEL: info
+  AWS_REGION: us-east-1
+  DYNAMO_TABLE: apuesta-total
+  DYNAMO_ENDPOINT: http://dynamodb:8000
+  AWS_ACCESS_KEY_ID: local
+  AWS_SECRET_ACCESS_KEY: local
+  JWT_SECRET: ${JWT_SECRET:-local-development-only-change-me-please}
+  JWT_TTL: 1h
+  BETSLIP_MIN_STAKE_AMOUNT: "1"
+  BETSLIP_MAX_STAKE_AMOUNT: "10000"
+  BETSLIP_CURRENCY_CODE: PEN
+  BETSLIP_MAX_SELECTIONS: "20"
+  RATE_LIMIT: 60-M
+  IDEMPOTENCY_TTL: 24h
+  DEMO_ACCOUNT_INITIAL_BALANCE: "1000"
+  SEED_RESET: ${SEED_RESET:-false}
+
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    # -sharedDb is mandatory (design.md D-adjacent note): without it,
+    # dynamodb-local shards tables per credential+region pair and the API
+    # sees an empty namespace.
+    #
+    # Deviation from design.md's literal "-dbPath /home/dynamodblocal/data
+    # + named volume" snippet: verified directly against
+    # amazon/dynamodb-local:latest that (a) -dbPath must be RELATIVE to the
+    # image's WORKDIR (an absolute path fails with "Invalid directory for
+    # database creation."), and (b) even with the correct relative path,
+    # docker-compose's auto-created named volume reproducibly fails at
+    # runtime with "SQLiteException: [14] unable to open database file"
+    # on this Docker Desktop/Windows host — the container never becomes
+    # usable. -inMemory sidesteps the volume/ownership issue entirely and
+    # is exactly what every dynamodb-local integration test in this repo
+    # (internal/adapters/dynamo/*_integration_test.go) already uses. Cost:
+    # data does not survive `docker-compose down`, which is the correct
+    # tradeoff for a demo/local-dev stack recreated on demand.
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    ports:
+      - "8000:8000"
+
+  seed:
+    build:
+      context: .
+      target: seed
+    depends_on:
+      - dynamodb
+    environment:
+      <<: *app-env
+
+  api:
+    build:
+      context: .
+      target: api
+    depends_on:
+      seed:
+        condition: service_completed_successfully
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *app-env
+      PORT: "8080"
