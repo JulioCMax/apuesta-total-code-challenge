@@ -21,6 +21,10 @@ bootstrap
 .env.*
 !.env.example
 
+# scripts/deploy-aws.sh working state (generated JWT_SECRET cache) — never
+# committed; see scripts/deploy-aws.sh's header for the documented choice.
+.deploy/
+
 # Editor/OS noise
 .vscode/
 .idea/
