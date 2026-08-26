@@ -23,15 +23,15 @@ func testEndpoint() string {
 	return "http://localhost:8000"
 }
 
-// loudSkipf fails t's most visible expectation — a loud, unmissable stderr
-// banner — before still calling t.Skip. A plain t.Skipf's reason is easy to
-// miss buried in a long CI log, and this repository's ONLY proof of real
-// DynamoDB concurrency correctness (TestPlaceAtomically_
-// NConcurrentGoroutines_LeavesExactBalance and friends, all gated behind
-// requireDynamoLocal) lives entirely inside these skippable tests: a green
-// `go test ./...` on a machine with no Docker running silently proves
-// nothing about that graded requirement. reason should name exactly what
-// went unverified.
+// loudSkipf prints a loud, unmissable stderr banner and THEN calls t.Skip —
+// it never fails t (t.Skip alone marks the test as skipped, not failed). A
+// plain t.Skipf's reason is easy to miss buried in a long CI log, and this
+// repository's ONLY proof of real DynamoDB concurrency correctness
+// (TestPlaceAtomically_NConcurrentGoroutines_LeavesExactBalance and
+// friends, all gated behind requireDynamoLocal) lives entirely inside these
+// skippable tests: a green `go test ./...` on a machine with no Docker
+// running silently proves nothing about that graded requirement. reason
+// should name exactly what went unverified.
 func loudSkipf(t *testing.T, reason string) {
 	t.Helper()
 	banner := fmt.Sprintf(
