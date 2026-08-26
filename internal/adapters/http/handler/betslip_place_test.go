@@ -285,6 +285,56 @@ func TestPlace_AbsurdStakeMagnitudeReturns400WithoutPlacing(t *testing.T) {
 	}
 }
 
+// TestPlace_OversizedIdempotencyKeyReturns400WithoutPlacing proves an
+// Idempotency-Key header far beyond any sane client-generated token length
+// is rejected with the standard VALIDATION_ERROR envelope before it ever
+// reaches the repository, where it would be written into a DynamoDB sort
+// key capped at 1024 bytes and fail with an unclassified 500 (finding
+// W-idempkey).
+func TestPlace_OversizedIdempotencyKeyReturns400WithoutPlacing(t *testing.T) {
+	catalog := newFakeCatalog(domainevent.SelectionRef{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.85)})
+	repo := newFakeBetRepo(mustMoney(t, 1000))
+	verifier := security.NewJWT("test-secret", time.Hour)
+	r := newPlaceRouter(t, catalog, repo, verifier, testBounds(t))
+
+	req := httptest.NewRequest(http.MethodPost, "/betslip/place", jsonBody(`{"selectionIds":["s1"],"stake":100}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenFor(t, verifier, "user-1"))
+	req.Header.Set("Idempotency-Key", strings.Repeat("k", 2000))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "VALIDATION_ERROR", body["error"].(map[string]any)["code"])
+	require.Equal(t, 0, repo.placedCount, "an invalid idempotency key must never reach the repository")
+}
+
+// TestPlace_InvalidCharacterIdempotencyKeyReturns400WithoutPlacing proves an
+// Idempotency-Key containing characters outside the accepted token charset
+// (e.g. control characters or separators that could corrupt the DynamoDB
+// sort key) is rejected the same way (finding W-idempkey).
+func TestPlace_InvalidCharacterIdempotencyKeyReturns400WithoutPlacing(t *testing.T) {
+	catalog := newFakeCatalog(domainevent.SelectionRef{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.85)})
+	repo := newFakeBetRepo(mustMoney(t, 1000))
+	verifier := security.NewJWT("test-secret", time.Hour)
+	r := newPlaceRouter(t, catalog, repo, verifier, testBounds(t))
+
+	req := httptest.NewRequest(http.MethodPost, "/betslip/place", jsonBody(`{"selectionIds":["s1"],"stake":100}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenFor(t, verifier, "user-1"))
+	req.Header.Set("Idempotency-Key", "bad key/with spaces")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "VALIDATION_ERROR", body["error"].(map[string]any)["code"])
+	require.Equal(t, 0, repo.placedCount, "an invalid idempotency key must never reach the repository")
+}
+
 // failingBalanceUsers is a UserRepository whose balance read always fails,
 // standing in for a throttled or transiently unavailable DynamoDB GetItem
 // immediately after the placement transaction has already committed.

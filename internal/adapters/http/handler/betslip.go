@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"regexp"
 
 	"github.com/gin-gonic/gin"
 
@@ -29,6 +30,30 @@ const idempotencyKeyHeader = "Idempotency-Key"
 // recorded outcome rather than performing a fresh placement (design.md's
 // PlaceBet Transaction "Responses").
 const idempotentReplayHeader = "Idempotent-Replay"
+
+// maxIdempotencyKeyLength bounds the accepted Idempotency-Key header. It is
+// stored as a DynamoDB sort key suffix ("IDEMP#<key>"), and a DynamoDB sort
+// key is capped at 1024 bytes total; 128 leaves generous headroom for the
+// prefix while still comfortably covering any client-generated token
+// (UUID, ULID, etc.) and rejecting the unbounded case that previously
+// surfaced as an unclassified 500 (finding W-idempkey).
+const maxIdempotencyKeyLength = 128
+
+// idempotencyKeyPattern accepts only characters safe to embed verbatim in a
+// DynamoDB sort key: letters, digits, hyphens and underscores. This is
+// deliberately conservative — every idempotency key this codebase's own
+// tests and scripts/smoke.sh generate already matches it.
+var idempotencyKeyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// isValidIdempotencyKey reports whether key is acceptable. An empty key is
+// always valid: Idempotency-Key is optional (design.md), and "" means the
+// caller opted out of deduplication entirely.
+func isValidIdempotencyKey(key string) bool {
+	if key == "" {
+		return true
+	}
+	return len(key) <= maxIdempotencyKeyLength && idempotencyKeyPattern.MatchString(key)
+}
 
 // BetSlip serves POST /betslip/calculate (public) and POST /betslip/place
 // (JWT-guarded).
@@ -89,13 +114,19 @@ func (h *BetSlip) Place(c *gin.Context) {
 		return
 	}
 
+	idempotencyKey := c.GetHeader(idempotencyKeyHeader)
+	if !isValidIdempotencyKey(idempotencyKey) {
+		apperror.WriteStatus(c, http.StatusBadRequest, "VALIDATION_ERROR", "La clave de idempotencia no es válida.")
+		return
+	}
+
 	userID := middleware.UserID(c)
 
 	result, err := h.place.Execute(c.Request.Context(), appbetslip.PlaceCommand{
 		UserID:         userID,
 		SelectionIDs:   req.SelectionIDs,
 		Stake:          stake,
-		IdempotencyKey: c.GetHeader(idempotencyKeyHeader),
+		IdempotencyKey: idempotencyKey,
 	})
 	if err != nil {
 		apperror.Write(c, err)
