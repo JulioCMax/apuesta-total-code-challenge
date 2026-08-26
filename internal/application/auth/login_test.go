@@ -89,6 +89,29 @@ func TestLogin_UnknownEmailReturnsSameGenericError(t *testing.T) {
 	require.ErrorIs(t, err, account.ErrInvalidCredentials)
 }
 
+// TestLogin_UnknownEmailPerformsDummyPasswordCompare proves an unknown
+// email still pays the cost of a password compare before returning
+// account.ErrInvalidCredentials, closing the user-enumeration timing oracle
+// a bare early-return would otherwise create: an unknown email would
+// short-circuit before any bcrypt work while a known email with a wrong
+// password still runs bcrypt, so response latency alone would reveal
+// whether an email exists (finding W-timing).
+func TestLogin_UnknownEmailPerformsDummyPasswordCompare(t *testing.T) {
+	users := &fakeUserRepository{findErr: errors.New("not found")}
+	passwords := &fakePasswordVerifier{}
+	tokens := &fakeTokenIssuer{}
+	uc := auth.NewLogin(users, passwords, tokens)
+
+	_, err := uc.Execute(context.Background(), auth.LoginCommand{
+		Email:    "nobody@apuestatotal.com",
+		Password: "irrelevant",
+	})
+
+	require.ErrorIs(t, err, account.ErrInvalidCredentials)
+	require.NotEmpty(t, passwords.lastHash, "an unknown email must still perform a dummy password compare")
+	require.Equal(t, "irrelevant", passwords.lastPlain)
+}
+
 // TestLogin_NeverExposesPasswordOrHash proves LoginResult's own value
 // representation — what a naive log statement would print — never
 // contains the plaintext password or the stored hash.
