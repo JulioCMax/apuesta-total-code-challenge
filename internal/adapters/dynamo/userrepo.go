@@ -57,6 +57,19 @@ func (r *UserRepository) PutUserIfAbsent(ctx context.Context, u account.User) er
 	return nil
 }
 
+// PutUser inserts or overwrites u's profile item unconditionally. cmd/seed
+// (Phase 13) uses this only when SEED_RESET=true — the normal seeding path
+// is PutUserIfAbsent, which never clobbers a played-with balance.
+func (r *UserRepository) PutUser(ctx context.Context, u account.User) error {
+	if _, err := r.client.PutItem(ctx, &dynamodb.PutItemInput{
+		TableName: aws.String(r.table),
+		Item:      userItemAttrs(u),
+	}); err != nil {
+		return fmt.Errorf("dynamo: put user (unconditional): %w", err)
+	}
+	return nil
+}
+
 // FindByEmail queries the EmailIndex GSI. The GSI's projection is
 // deliberately narrow — INCLUDE [userId, passwordHash, balance]
 // (design.md) — because that is exactly what application/auth.Login
