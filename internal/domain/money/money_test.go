@@ -66,3 +66,31 @@ func TestOdds_CombineIsRound2Product(t *testing.T) {
 	// 1.85 * 2.10 = 3.885 -> Round2 -> 3.89 (half-up)
 	require.Equal(t, "3.89", combined.String())
 }
+
+// TestNewOdds_EnforcesMinimum proves Odds rejects anything below the house
+// minimum of 1.01 and accepts values at or above it.
+func TestNewOdds_EnforcesMinimum(t *testing.T) {
+	tests := []struct {
+		name    string
+		odds    float64
+		want    string
+		wantErr bool
+	}{
+		{name: "below minimum is rejected", odds: 1.00, wantErr: true},
+		{name: "exactly at minimum is accepted", odds: 1.01, want: "1.01"},
+		{name: "well above minimum is accepted", odds: 2.50, want: "2.50"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := money.NewOddsFromFloat(tt.odds)
+			if tt.wantErr {
+				require.Error(t, err)
+				require.ErrorIs(t, err, money.ErrOddsTooLow)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got.String())
+		})
+	}
+}
