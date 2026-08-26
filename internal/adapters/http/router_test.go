@@ -168,6 +168,35 @@ func TestRouter_PublicRoutesReachableWithoutAuth(t *testing.T) {
 	}
 }
 
+// TestRouter_DocsAndOpenAPISpecReachableWithoutAuth proves GET /docs and
+// GET /openapi.yaml are both wired as public, unauthenticated routes at the
+// same top level as /health — outside /api/v1, so neither the rate limiter
+// nor the JWT guard ever touches them (design.md's HTTP Layer route table;
+// Phase 14).
+func TestRouter_DocsAndOpenAPISpecReachableWithoutAuth(t *testing.T) {
+	r, _ := newTestRouter(t)
+
+	tests := []struct {
+		name        string
+		path        string
+		contentType string
+	}{
+		{"openapi spec", "/openapi.yaml", "yaml"},
+		{"swagger ui docs", "/docs", "text/html"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code)
+			require.Contains(t, w.Header().Get("Content-Type"), tt.contentType)
+		})
+	}
+}
+
 // TestRouter_ProtectedRoutesRequireJWT proves /betslip/place, /balance and
 // /bets are all guarded by the same JWT middleware (spec: auth-and-
 // balance/Auth Guard Middleware).
@@ -327,6 +356,23 @@ func TestRouter_OversizeBodyReturnsStandardValidationEnvelope(t *testing.T) {
 	var env apperror.Envelope
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &env))
 	require.Equal(t, "VALIDATION_ERROR", env.Error.Code)
+}
+
+// TestRouter_UnmatchedMethodReturns405WithAllowHeader proves a 405 response
+// carries the Allow header RFC 9110 section 15.5.6 requires, naming the
+// method(s) actually registered for that path (finding R4). This is NEW
+// behavior introduced by turning on HandleMethodNotAllowed: those requests
+// used to be plain 404s, which never had this obligation.
+func TestRouter_UnmatchedMethodReturns405WithAllowHeader(t *testing.T) {
+	r, _ := newTestRouter(t)
+
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/events", nil)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusMethodNotAllowed, w.Code)
+	require.Equal(t, http.MethodGet, w.Header().Get("Allow"),
+		"a 405 response must name the methods actually supported for the path (RFC 9110 section 15.5.6)")
 }
 
 func topLevelKeys(m map[string]any) []string {
