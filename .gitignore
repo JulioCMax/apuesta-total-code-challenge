@@ -1,0 +1,26 @@
+# Internal SDD/process working material (not part of the deliverable)
+openspec/
+.atl/
+
+# Personal notes and recruiting material
+docs/notas.md
+docs/Reto_Tecnico_Backend (1).pdf
+
+# Go build artifacts
+bin/
+dist/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Editor/OS noise
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
