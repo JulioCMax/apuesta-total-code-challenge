@@ -79,13 +79,16 @@ func mustSelection(t *testing.T) domainevent.SelectionRef {
 
 // TestPlaceAtomically_NConcurrentGoroutines_LeavesExactBalance is the
 // infrastructure-level mirror of application/betslip's
-// TestPlaceBet_ConcurrentDebits_NoOverdraft (place_race_test.go), but
-// firing N goroutines at the REAL DynamoDB-backed placement path instead
-// of a mutex-guarded fake. A balance covering exactly one stake must
-// result in exactly one accepted bet, N-1 typed insufficient-funds
-// rejections, an exact final balance, and N stored bets — no lost
-// updates, no double-debit (spec: bet-slip-placement/Concurrency-Safe
-// Balance Debit).
+// TestPlaceBet_ConcurrentDebits_NoOverdraftGivenAnAtomicPort
+// (place_race_test.go), but firing N goroutines at the REAL DynamoDB-backed
+// placement path instead of a mutex-guarded fake. THIS is the test that
+// actually proves the real repository's own atomicity under concurrency —
+// the application-layer test above only proves Place's use-case code
+// behaves correctly when handed an already-atomic port. A balance covering
+// exactly one stake must result in exactly one accepted bet, N-1 typed
+// insufficient-funds rejections, an exact final balance, and N stored bets
+// — no lost updates, no double-debit (spec: bet-slip-placement/
+// Concurrency-Safe Balance Debit).
 func TestPlaceAtomically_NConcurrentGoroutines_LeavesExactBalance(t *testing.T) {
 	client, table := requireDynamoLocal(t)
 	const n = 12
