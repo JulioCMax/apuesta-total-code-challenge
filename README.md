@@ -168,10 +168,16 @@ La respuesta es un **arreglo JSON directo**, sin envoltorio:
     "phase": "group_stage",
     "group": "A",
     "isLive": false,
-    "isSuspended": false
+    "isSuspended": false,
+    "settings": { "hasStatistics": true, "isBetBuilderEnabled": true }
   }
 ]
 ```
+
+`settings` viaja en cada entrada del listado, no sólo en el detalle. Una interfaz que
+dibuja las insignias de estadísticas y BetBuilder sobre la tarjeta **colapsada** —como
+hace el diseño de referencia— no debería pedir el detalle de los veinticuatro eventos
+únicamente para pintarlas.
 
 **3. Detalle del evento**
 

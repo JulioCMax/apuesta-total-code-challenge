@@ -778,7 +778,7 @@ components:
 
     EventSummary:
       type: object
-      required: [id, name, startsAt, league, home, away, phase, isLive, isSuspended]
+      required: [id, name, startsAt, league, home, away, phase, isLive, isSuspended, settings]
       properties:
         id:
           type: string
@@ -813,15 +813,21 @@ components:
           type: boolean
         isSuspended:
           type: boolean
+        settings:
+          allOf:
+            - $ref: "#/components/schemas/EventSettings"
+          description: >-
+            Metadata de interfaz del evento. Viaja también en el listado, no
+            sólo en el detalle: una interfaz que dibuja estas insignias en la
+            tarjeta colapsada no debería pedir el detalle de cada evento
+            listado únicamente para pintarlas.
 
     EventDetail:
       allOf:
         - $ref: "#/components/schemas/EventSummary"
         - type: object
-          required: [settings, markets]
+          required: [markets]
           properties:
-            settings:
-              $ref: "#/components/schemas/EventSettings"
             markets:
               type: array
               description: Siempre en el orden fijo por defecto ML0, OU200, QA158, ML235.

@@ -11,21 +11,37 @@ import (
 
 // --- Events ---------------------------------------------------------------
 
+// EventSettings carries the UI metadata flags the event itself MUST expose
+// (spec: events-catalog/Market and Event Metadata Exposure — verified
+// event-level, once per event, not per market).
+type EventSettings struct {
+	HasStatistics       bool `json:"hasStatistics"`
+	IsBetBuilderEnabled bool `json:"isBetBuilderEnabled"`
+}
+
 // EventSummary is one event as it appears in both GET /events' list
 // response and as the base of GET /events/:id's detail response. Group is
 // omitted entirely (omitempty) when unresolved — never sent as "" (design.
 // md's in-memory event repository section).
+//
+// Settings travels with the summary, so the list carries the same UI
+// metadata as the detail. The reference design draws the statistics and
+// BetBuilder badges on the collapsed card of the list; exposing the flags
+// only on the detail would make a client fetch every listed event just to
+// render its badges — one extra request per row for metadata already loaded
+// here.
 type EventSummary struct {
-	ID          string    `json:"id"`
-	Name        string    `json:"name"`
-	StartsAt    time.Time `json:"startsAt"`
-	League      string    `json:"league"`
-	Home        string    `json:"home"`
-	Away        string    `json:"away"`
-	Phase       string    `json:"phase"`
-	Group       string    `json:"group,omitempty"`
-	IsLive      bool      `json:"isLive"`
-	IsSuspended bool      `json:"isSuspended"`
+	ID          string        `json:"id"`
+	Name        string        `json:"name"`
+	StartsAt    time.Time     `json:"startsAt"`
+	League      string        `json:"league"`
+	Home        string        `json:"home"`
+	Away        string        `json:"away"`
+	Phase       string        `json:"phase"`
+	Group       string        `json:"group,omitempty"`
+	IsLive      bool          `json:"isLive"`
+	IsSuspended bool          `json:"isSuspended"`
+	Settings    EventSettings `json:"settings"`
 }
 
 // MarketTypeResponse carries the market type identifier every market entry
@@ -54,19 +70,16 @@ type MarketResponse struct {
 	Selections []EventSelectionResponse `json:"selections"`
 }
 
-// EventSettings carries the UI metadata flags the event itself MUST expose
-// (spec: events-catalog/Market and Event Metadata Exposure — verified
-// event-level, once per event, not per market).
-type EventSettings struct {
-	HasStatistics       bool `json:"hasStatistics"`
-	IsBetBuilderEnabled bool `json:"isBetBuilderEnabled"`
-}
-
-// EventDetail is the full JSON body of GET /events/:id.
+// EventDetail is the full JSON body of GET /events/:id: the same summary
+// the list returns, plus the ordered markets.
+//
+// It declares no Settings field of its own — that would collide with the
+// embedded EventSummary's, and encoding/json resolves such a clash silently
+// by depth rather than by refusing to compile. The flags have exactly one
+// source.
 type EventDetail struct {
 	EventSummary
-	Settings EventSettings    `json:"settings"`
-	Markets  []MarketResponse `json:"markets"`
+	Markets []MarketResponse `json:"markets"`
 }
 
 // EventSummaryFromDomain converts a domain Event into its list/detail-base
@@ -87,6 +100,10 @@ func EventSummaryFromDomain(e domainevent.Event) EventSummary {
 		Group:       group,
 		IsLive:      e.IsLive,
 		IsSuspended: e.IsSuspended,
+		Settings: EventSettings{
+			HasStatistics:       e.HasStatistics,
+			IsBetBuilderEnabled: e.IsBetBuilderEnabled,
+		},
 	}
 }
 
@@ -107,7 +124,6 @@ func EventDetailFromDomain(e domainevent.Event) EventDetail {
 	}
 	return EventDetail{
 		EventSummary: EventSummaryFromDomain(e),
-		Settings:     EventSettings{HasStatistics: e.HasStatistics, IsBetBuilderEnabled: e.IsBetBuilderEnabled},
 		Markets:      markets,
 	}
 }

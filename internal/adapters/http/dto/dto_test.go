@@ -88,6 +88,47 @@ func TestEventSummaryFromDomain_IncludesResolvedGroup(t *testing.T) {
 	require.Contains(t, string(raw), `"group":"A"`)
 }
 
+// TestEventSummaryFromDomain_ExposesSettingsInTheList proves the UI
+// metadata flags travel with every entry of GET /events, not only with the
+// detail response.
+//
+// The reference design renders the statistics and BetBuilder badges on the
+// COLLAPSED card in the list. Serving those flags only from
+// GET /events/{id} would force a client to fetch the detail of every listed
+// event just to draw its badges — one request per row, for metadata the
+// list already knows.
+func TestEventSummaryFromDomain_ExposesSettingsInTheList(t *testing.T) {
+	e := domainevent.Event{
+		ID:                  "evt-settings",
+		HasStatistics:       true,
+		IsBetBuilderEnabled: true,
+	}
+
+	summary := dto.EventSummaryFromDomain(e)
+	require.True(t, summary.Settings.HasStatistics)
+	require.True(t, summary.Settings.IsBetBuilderEnabled)
+
+	raw, err := json.Marshal(summary)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"settings"`)
+	require.Contains(t, string(raw), `"hasStatistics":true`)
+	require.Contains(t, string(raw), `"isBetBuilderEnabled":true`)
+}
+
+// TestEventDetailFromDomain_SettingsAppearExactlyOnce guards the embedding.
+// EventDetail embeds EventSummary, so a second Settings field declared on
+// the detail would put two "settings" keys in play; encoding/json would
+// silently resolve the clash by depth and the losing one would vanish
+// without a compile error. One key, one source.
+func TestEventDetailFromDomain_SettingsAppearExactlyOnce(t *testing.T) {
+	e := domainevent.Event{ID: "evt-once", HasStatistics: true}
+
+	raw, err := json.Marshal(dto.EventDetailFromDomain(e))
+	require.NoError(t, err)
+	require.Equal(t, 1, strings.Count(string(raw), `"settings"`))
+	require.Contains(t, string(raw), `"hasStatistics":true`)
+}
+
 // TestEventDetailFromDomain_ExposesMarketTypeIdAndEventLevelSettings proves
 // each market carries MarketType.ID and the event itself carries the UI
 // metadata flags (spec: events-catalog/Market and Event Metadata Exposure).
