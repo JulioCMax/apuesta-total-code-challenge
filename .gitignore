@@ -13,6 +13,8 @@ dist/
 *.test
 *.out
 coverage.*
+bootstrap
+*.zip
 
 # Environment and secrets
 .env
