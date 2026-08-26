@@ -11,6 +11,7 @@ RUN go mod download
 
 COPY cmd/ ./cmd/
 COPY internal/ ./internal/
+COPY api/ ./api/
 
 # CGO_ENABLED=0 produces a fully static binary so it can run on the
 # distroless base below (no libc, no shell).
