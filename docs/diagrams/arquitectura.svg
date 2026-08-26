@@ -1,0 +1,228 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 2240" width="2000" height="2240" font-family="Helvetica, Arial, sans-serif">
+<rect x="0" y="0" width="2000" height="2240" fill="#ffffff"/>
+<defs><marker id="arrowhead" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L8,3 L0,6 Z" fill="#343a40"/></marker></defs>
+<rect x="800" y="108" width="400" height="74" rx="10" ry="10" fill="#e7f5ff" stroke="#1971c2" stroke-width="2"/>
+<rect x="60" y="250" width="1880" height="390" rx="10" ry="10" fill="#ebfbee" stroke="#2f9e44" stroke-width="2"/>
+<rect x="90" y="305" width="350" height="72" rx="10" ry="10" fill="#b2f2bb" stroke="#2f9e44" stroke-width="2"/>
+<rect x="472" y="305" width="350" height="72" rx="10" ry="10" fill="#b2f2bb" stroke="#2f9e44" stroke-width="2"/>
+<rect x="854" y="305" width="350" height="72" rx="10" ry="10" fill="#b2f2bb" stroke="#2f9e44" stroke-width="2"/>
+<rect x="1236" y="305" width="350" height="72" rx="10" ry="10" fill="#b2f2bb" stroke="#2f9e44" stroke-width="2"/>
+<rect x="1618" y="305" width="350" height="72" rx="10" ry="10" fill="#b2f2bb" stroke="#2f9e44" stroke-width="2"/>
+<rect x="60" y="402" width="900" height="180" rx="10" ry="10" fill="#d3f9d8" stroke="#2f9e44" stroke-width="2"/>
+<rect x="1040" y="402" width="900" height="180" rx="10" ry="10" fill="#d3f9d8" stroke="#2f9e44" stroke-width="2"/>
+<rect x="60" y="680" width="1880" height="180" rx="10" ry="10" fill="#d0ebff" stroke="#1971c2" stroke-width="2"/>
+<rect x="60" y="900" width="1880" height="200" rx="10" ry="10" fill="#e5dbff" stroke="#6741d9" stroke-width="2"/>
+<rect x="60" y="1210" width="900" height="210" rx="10" ry="10" fill="#fff3bf" stroke="#f08c00" stroke-width="2"/>
+<rect x="1040" y="1210" width="900" height="210" rx="10" ry="10" fill="#ffe8cc" stroke="#e8590c" stroke-width="2"/>
+<rect x="60" y="1450" width="900" height="100" rx="10" ry="10" fill="#f1f3f5" stroke="#868e96" stroke-width="2" stroke-dasharray="8,6"/>
+<rect x="1040" y="1450" width="900" height="100" rx="10" ry="10" fill="#ffc9c9" stroke="#e03131" stroke-width="2"/>
+<rect x="60" y="1680" width="900" height="290" rx="10" ry="10" fill="#f1f3f5" stroke="#495057" stroke-width="2"/>
+<rect x="90" y="1735" width="380" height="80" rx="10" ry="10" fill="#ffffff" stroke="#495057" stroke-width="2"/>
+<rect x="90" y="1870" width="380" height="80" rx="10" ry="10" fill="#ffffff" stroke="#495057" stroke-width="2"/>
+<rect x="520" y="1800" width="380" height="80" rx="10" ry="10" fill="#ffffff" stroke="#495057" stroke-width="2"/>
+<rect x="1040" y="1680" width="900" height="290" rx="10" ry="10" fill="#fff3bf" stroke="#f08c00" stroke-width="2"/>
+<rect x="1070" y="1735" width="380" height="70" rx="10" ry="10" fill="#ffffff" stroke="#f08c00" stroke-width="2"/>
+<rect x="1070" y="1830" width="380" height="90" rx="10" ry="10" fill="#ffffff" stroke="#f08c00" stroke-width="2"/>
+<rect x="1500" y="1735" width="380" height="80" rx="10" ry="10" fill="#ffffff" stroke="#f08c00" stroke-width="2"/>
+<rect x="1500" y="1840" width="380" height="80" rx="10" ry="10" fill="#ffffff" stroke="#f08c00" stroke-width="2"/>
+<rect x="60" y="2060" width="1880" height="140" rx="10" ry="10" fill="#ffffff" stroke="#495057" stroke-width="2"/>
+<line x1="1000" y1="182" x2="1000" y2="250" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="440" y1="341.0" x2="472" y2="341.0" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="822" y1="341.0" x2="854" y2="341.0" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="1204" y1="341.0" x2="1236" y2="341.0" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="1586" y1="341.0" x2="1618" y2="341.0" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="1000" y1="640" x2="1000" y2="680" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="1000" y1="860" x2="1000" y2="900" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="510.0" y1="1210" x2="510.0" y2="1100" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="1490.0" y1="1210" x2="1490.0" y2="1100" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="1040" y1="1500.0" x2="960" y2="1500.0" stroke="#343a40" stroke-width="2" stroke-dasharray="8,6" marker-end="url(#arrowhead)"/>
+<line x1="1000" y1="1605" x2="1000" y2="1620" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="520" y1="1840.0" x2="470" y2="1910.0" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="470" y1="1775.0" x2="520" y2="1840.0" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="1450" y1="1770.0" x2="1260.0" y2="1830" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="1450" y1="1855" x2="1500" y2="1775.0" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<line x1="1450" y1="1905" x2="1500" y2="1880.0" stroke="#343a40" stroke-width="2" marker-end="url(#arrowhead)"/>
+<text x="1000.0" y="46" font-size="28" font-weight="700" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1000.0" dy="0">Arquitectura — World Cup 2026 Betting API</tspan>
+</text>
+<text x="1000.0" y="78" font-size="16" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1000.0" dy="0">Arquitectura hexagonal en Go · la dependencia siempre apunta hacia el dominio</tspan>
+</text>
+<text x="1000.0" y="136" font-size="16" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1000.0" dy="0">Cliente</tspan>
+<tspan x="1000.0" dy="20.8">(navegador, curl, Swagger UI)</tspan>
+</text>
+<text x="1015" y="220.0" font-size="14" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="1015" dy="0">HTTP / JSON</tspan>
+</text>
+<text x="90" y="283" font-size="18" font-weight="700" fill="#1e1e1e" text-anchor="start">
+<tspan x="90" dy="0">Adaptador HTTP (Gin) — internal/adapters/http</tspan>
+</text>
+<text x="265.0" y="345.6" font-size="15" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="265.0" dy="0">recovery</tspan>
+</text>
+<text x="647.0" y="345.6" font-size="15" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="647.0" dy="0">requestID</tspan>
+</text>
+<text x="1029.0" y="345.6" font-size="15" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1029.0" dy="0">logging (slog)</tspan>
+</text>
+<text x="1411.0" y="335.2" font-size="15" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1411.0" dy="0">rate limit</tspan>
+<tspan x="1411.0" dy="19.5">(solo /api/v1)</tspan>
+</text>
+<text x="1793.0" y="335.2" font-size="15" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1793.0" dy="0">JWT guard</tspan>
+<tspan x="1793.0" dy="19.5">(solo rutas protegidas)</tspan>
+</text>
+<text x="75" y="430" font-size="16" font-weight="700" fill="#1e1e1e" text-anchor="start">
+<tspan x="75" dy="0">Rutas públicas</tspan>
+</text>
+<text x="75" y="461" font-size="14" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="75" dy="0">GET /health · GET /docs · GET /openapi.yaml</tspan>
+<tspan x="75" dy="18.2">POST /api/v1/auth/login</tspan>
+<tspan x="75" dy="18.2">GET /api/v1/events · GET /api/v1/events/:id</tspan>
+<tspan x="75" dy="18.2">POST /api/v1/betslip/calculate</tspan>
+</text>
+<text x="1055" y="430" font-size="16" font-weight="700" fill="#1e1e1e" text-anchor="start">
+<tspan x="1055" dy="0">Rutas protegidas (JWT)</tspan>
+</text>
+<text x="1055" y="461" font-size="14" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="1055" dy="0">POST /api/v1/betslip/place  (header Idempotency-Key)</tspan>
+<tspan x="1055" dy="18.2">GET /api/v1/balance</tspan>
+<tspan x="1055" dy="18.2">GET /api/v1/bets?limit=&amp;cursor=</tspan>
+</text>
+<text x="1015" y="661" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="1015" dy="0">depende de ↓  (DTO validado → comando)</tspan>
+</text>
+<text x="90" y="713" font-size="18" font-weight="700" fill="#1e1e1e" text-anchor="start">
+<tspan x="90" dy="0">Casos de uso — internal/application</tspan>
+</text>
+<text x="90" y="750" font-size="15" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="90" dy="0">event.List · event.Detail · betslip.Calculate · betslip.Place</tspan>
+<tspan x="90" dy="19.5">auth.Login · auth.Balance · auth.History</tspan>
+</text>
+<text x="90" y="814" font-size="14" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="90" dy="0">Interfaces propias del consumidor (puertos, sin carpeta ports/):</tspan>
+<tspan x="90" dy="18.2">EventCatalog · BetRepository · UserRepository · TokenIssuer · IDGenerator</tspan>
+</text>
+<text x="1015" y="881" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="1015" dy="0">depende de ↓  (reglas de negocio)</tspan>
+</text>
+<text x="90" y="933" font-size="18" font-weight="700" fill="#1e1e1e" text-anchor="start">
+<tspan x="90" dy="0">Dominio — internal/domain (sin framework, núcleo puro)</tspan>
+</text>
+<text x="90" y="970" font-size="15" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="90" dy="0">money: Money, Odds (Round2 único)   ·   event: Event, Market, Selection, Phase, Group</tspan>
+<tspan x="90" dy="19.5">betslip: BetSlip, Bet, BetStatus (accepted | rejected)   ·   account: User</tspan>
+<tspan x="90" dy="19.5">Errores tipados: ErrInsufficientFunds, ErrSameEventCombo, StakeOutOfRangeError, …</tspan>
+</text>
+<text x="90" y="1078" font-size="13" font-weight="700" fill="#6741d9" text-anchor="start">
+<tspan x="90" dy="0">No importa Gin ni el SDK de AWS — solo librería estándar + shopspring/decimal</tspan>
+</text>
+<text x="1000.0" y="1123" font-size="15" font-weight="700" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1000.0" dy="0">División de persistencia: catálogo de eventos de solo lectura en memoria · usuarios, saldo y apuestas en DynamoDB</tspan>
+</text>
+<text x="80" y="1238" font-size="16" font-weight="700" fill="#1e1e1e" text-anchor="start">
+<tspan x="80" dy="0">Repositorio de eventos en memoria</tspan>
+<tspan x="80" dy="20.8">internal/adapters/memory</tspan>
+</text>
+<text x="80" y="1294" font-size="14" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="80" dy="0">data.json embebido (go:embed), 24 eventos</tspan>
+<tspan x="80" dy="18.2">Solo lectura, cargado una única vez al iniciar el proceso</tspan>
+<tspan x="80" dy="18.2">seed/groups.go: grupos A–L (draw oficial FIFA WC2026 verificado)</tspan>
+</text>
+<text x="1060" y="1238" font-size="16" font-weight="700" fill="#1e1e1e" text-anchor="start">
+<tspan x="1060" dy="0">DynamoDB — tabla única</tspan>
+<tspan x="1060" dy="20.8">internal/adapters/dynamo</tspan>
+</text>
+<text x="1060" y="1294" font-size="14" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="1060" dy="0">PK USER#&lt;id&gt; / SK PROFILE — perfil y saldo</tspan>
+<tspan x="1060" dy="18.2">PK USER#&lt;id&gt; / SK BET#&lt;id&gt; — apuestas (accepted | rejected)</tspan>
+<tspan x="1060" dy="18.2">PK USER#&lt;id&gt; / SK IDEMP#&lt;key&gt; — idempotencia (TTL 24h)</tspan>
+<tspan x="1060" dy="18.2">GSI EmailIndex — búsqueda de usuario por email</tspan>
+</text>
+<text x="522.0" y="1154" font-size="12" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="522.0" dy="0">implementa EventCatalog</tspan>
+<tspan x="522.0" dy="15.600000000000001">(puerto definido en application)</tspan>
+</text>
+<text x="1502.0" y="1154" font-size="12" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="1502.0" dy="0">implementa BetRepository / UserRepository</tspan>
+<tspan x="1502.0" dy="15.600000000000001">(puertos definidos en application)</tspan>
+</text>
+<text x="80" y="1478" font-size="14" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="80" dy="0">Mejora futura (no implementada): publicación de eventos</tspan>
+<tspan x="80" dy="18.2">(EventBridge / SNS) tras colocar la apuesta</tspan>
+</text>
+<text x="1060" y="1474" font-size="14" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="1060" dy="0">TransactWriteItems: débito condicional (balance ≥ stake)</tspan>
+<tspan x="1060" dy="18.2">+ Put de la apuesta + Put de idempotencia — todo o nada</tspan>
+</text>
+<text x="1040" y="1578" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="1040" dy="0">Idempotency-Key: una réplica devuelve el resultado ya registrado</tspan>
+<tspan x="1040" dy="16.900000000000002">(accepted o rejected); nunca se reevalúa</tspan>
+</text>
+<text x="1015" y="1623" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="1015" dy="0">se ejecuta en:</tspan>
+</text>
+<text x="1000.0" y="1653" font-size="18" font-weight="700" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1000.0" dy="0">Dos entornos de ejecución — mismo router, mismos handlers, mismo dominio</tspan>
+</text>
+<text x="80" y="1708" font-size="16" font-weight="700" fill="#1e1e1e" text-anchor="start">
+<tspan x="80" dy="0">Entorno LOCAL — docker-compose</tspan>
+</text>
+<text x="280.0" y="1758" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="280.0" dy="0">Contenedor api</tspan>
+<tspan x="280.0" dy="16.900000000000002">Gin, puerto 8080 · http.Server + ListenAndServe</tspan>
+</text>
+<text x="280.0" y="1893" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="280.0" dy="0">amazon/dynamodb-local</tspan>
+<tspan x="280.0" dy="16.900000000000002">puerto 8000 (-inMemory -sharedDb)</tspan>
+</text>
+<text x="710.0" y="1823" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="710.0" dy="0">Job seed (one-shot)</tspan>
+<tspan x="710.0" dy="16.900000000000002">crea la tabla + usuarios demo</tspan>
+</text>
+<text x="440" y="1823.0" font-size="11" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="440" dy="0">depends_on</tspan>
+</text>
+<text x="475" y="1756.0" font-size="11" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="475" dy="0">depends_on:</tspan>
+<tspan x="475" dy="14.3">service_completed_successfully</tspan>
+</text>
+<text x="1060" y="1708" font-size="16" font-weight="700" fill="#1e1e1e" text-anchor="start">
+<tspan x="1060" dy="0">Entorno AWS</tspan>
+</text>
+<text x="1260.0" y="1758" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1260.0" dy="0">Function URL</tspan>
+<tspan x="1260.0" dy="16.900000000000002">auth-type NONE</tspan>
+</text>
+<text x="1260.0" y="1853" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1260.0" dy="0">Lambda arm64 — bootstrap</tspan>
+<tspan x="1260.0" dy="16.900000000000002">provided.al2023 · lambda.Start</tspan>
+<tspan x="1260.0" dy="16.900000000000002">memoria 512 MB · timeout 10 s</tspan>
+</text>
+<text x="1690.0" y="1758" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1690.0" dy="0">DynamoDB</tspan>
+<tspan x="1690.0" dy="16.900000000000002">tabla real, misma forma de claves</tspan>
+</text>
+<text x="1690.0" y="1863" font-size="13" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1690.0" dy="0">CloudWatch Logs</tspan>
+<tspan x="1690.0" dy="16.900000000000002">stdout en JSON estructurado</tspan>
+</text>
+<text x="1390" y="1818" font-size="11" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="1390" dy="0">invoca</tspan>
+</text>
+<text x="1000.0" y="2004" font-size="14" font-weight="400" fill="#1e1e1e" text-anchor="middle">
+<tspan x="1000.0" dy="0">cmd/api/main.go: mismo *gin.Engine en ambos entornos;</tspan>
+<tspan x="1000.0" dy="18.2">~10 líneas deciden ListenAndServe vs lambda.Start según la variable AWS_LAMBDA_FUNCTION_NAME</tspan>
+</text>
+<text x="85" y="2088" font-size="16" font-weight="700" fill="#1e1e1e" text-anchor="start">
+<tspan x="85" dy="0">Leyenda</tspan>
+</text>
+<text x="85" y="2119" font-size="14" font-weight="400" fill="#1e1e1e" text-anchor="start">
+<tspan x="85" dy="0">→  dirección de la dependencia (siempre hacia application / domain) o del flujo de datos</tspan>
+<tspan x="85" dy="18.2">┄→  mejora futura, no implementada</tspan>
+<tspan x="85" dy="18.2">El dominio nunca importa Gin ni el SDK de AWS; los adaptadores dependen de la aplicación, la aplicación depende del dominio — nunca al revés.</tspan>
+</text>
+</svg>
