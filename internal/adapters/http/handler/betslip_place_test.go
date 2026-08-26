@@ -248,3 +248,38 @@ func TestPlace_ReplayReturns200WithHeader(t *testing.T) {
 	require.NoError(t, json.Unmarshal(w2.Body.Bytes(), &body))
 	require.InDelta(t, 900.00, body["balanceAfter"], 0.001, "a replay must never apply a second debit")
 }
+
+// TestPlace_AbsurdStakeMagnitudeReturns400WithoutPlacing proves the
+// placement endpoint applies the exact same request-boundary stake
+// magnitude guard as calculate, and never reaches the repository.
+func TestPlace_AbsurdStakeMagnitudeReturns400WithoutPlacing(t *testing.T) {
+	catalog := newFakeCatalog(domainevent.SelectionRef{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.85)})
+	repo := newFakeBetRepo(mustMoney(t, 1000))
+	verifier := security.NewJWT("test-secret", time.Hour)
+	r := newPlaceRouter(t, catalog, repo, verifier, testBounds(t))
+
+	type result struct {
+		code int
+		body []byte
+	}
+	done := make(chan result, 1)
+	go func() {
+		req := httptest.NewRequest(http.MethodPost, "/betslip/place", jsonBody(`{"selectionIds":["s1"],"stake":1e10000000}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+tokenFor(t, verifier, "user-1"))
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		done <- result{code: w.Code, body: w.Body.Bytes()}
+	}()
+
+	select {
+	case got := <-done:
+		require.Equal(t, http.StatusBadRequest, got.code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(got.body, &body))
+		require.Equal(t, "VALIDATION_ERROR", body["error"].(map[string]any)["code"])
+		require.Equal(t, 0, repo.placedCount, "an out-of-range stake must never reach the repository")
+	case <-time.After(2 * time.Second):
+		t.Fatal("POST /betslip/place did not answer within 2s: the request reached decimal rounding")
+	}
+}

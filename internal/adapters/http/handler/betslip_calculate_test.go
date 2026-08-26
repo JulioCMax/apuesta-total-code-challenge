@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -171,4 +172,34 @@ func TestCalculate_MalformedBodyReturns400ValidationEnvelope(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 	require.Equal(t, "VALIDATION_ERROR", body["error"].(map[string]any)["code"])
+}
+
+// TestCalculate_AbsurdStakeMagnitudeReturns400WithoutHanging proves the
+// public, unauthenticated calculate endpoint rejects an attacker-supplied
+// stake exponent through the standard VALIDATION_ERROR envelope, and does
+// so promptly: without the request-boundary magnitude guard, rounding
+// 1e10000000 to 2 decimal places burns seconds of CPU and hundreds of MB
+// of allocation per request.
+func TestCalculate_AbsurdStakeMagnitudeReturns400WithoutHanging(t *testing.T) {
+	r := newCalculateRouter(newFakeCatalog(), testBounds(t))
+
+	type result struct {
+		code int
+		body []byte
+	}
+	done := make(chan result, 1)
+	go func() {
+		w := doJSON(t, r, http.MethodPost, "/betslip/calculate", `{"selectionIds":["s1"],"stake":1e10000000}`)
+		done <- result{code: w.Code, body: w.Body.Bytes()}
+	}()
+
+	select {
+	case got := <-done:
+		require.Equal(t, http.StatusBadRequest, got.code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(got.body, &body))
+		require.Equal(t, "VALIDATION_ERROR", body["error"].(map[string]any)["code"])
+	case <-time.After(2 * time.Second):
+		t.Fatal("POST /betslip/calculate did not answer within 2s: an unauthenticated request reached decimal rounding")
+	}
 }

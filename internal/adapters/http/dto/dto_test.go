@@ -2,6 +2,7 @@ package dto_test
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -205,4 +206,74 @@ func TestBetsResponseFromDomain_EmptyCursorMarshalsAsNull(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(raw), `"nextCursor":null`)
 	require.Contains(t, string(raw), `"items":[]`)
+}
+
+// TestBetSlipRequest_StakeMoney_RejectsAbsurdMagnitude proves an
+// attacker-supplied exponent can never reach decimal rounding. A literal
+// such as 1e10000000 is a perfectly valid JSON number that shopspring/
+// decimal accepts (exponents up to int32), but rescaling it to 2 decimal
+// places materialises a ten-million-digit big.Int: seconds of CPU and
+// hundreds of MB of allocation per unauthenticated request. StakeMoney
+// MUST reject the magnitude at the request boundary, before any rounding
+// happens, and MUST return promptly.
+func TestBetSlipRequest_StakeMoney_RejectsAbsurdMagnitude(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"huge positive exponent", `{"selectionIds":["s1"],"stake":1e10000}`},
+		{"catastrophic positive exponent", `{"selectionIds":["s1"],"stake":1e10000000}`},
+		{"catastrophic negative exponent", `{"selectionIds":["s1"],"stake":1e-10000000}`},
+		{"negative sign with huge exponent", `{"selectionIds":["s1"],"stake":-1e10000000}`},
+		{"absurdly long literal", `{"selectionIds":["s1"],"stake":` + strings.Repeat("9", 400) + `}`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req dto.BetSlipRequest
+			require.NoError(t, json.Unmarshal([]byte(tt.body), &req))
+
+			done := make(chan error, 1)
+			go func() {
+				_, err := req.StakeMoney()
+				done <- err
+			}()
+
+			select {
+			case err := <-done:
+				require.Error(t, err, "an absurd stake magnitude must be rejected")
+			case <-time.After(2 * time.Second):
+				t.Fatal("StakeMoney did not return within 2s: the stake magnitude reached decimal rounding")
+			}
+		})
+	}
+}
+
+// TestBetSlipRequest_StakeMoney_AcceptsRealisticAmounts is the
+// triangulation case for the magnitude guard: every amount a real caller
+// can legitimately send MUST still parse exactly.
+func TestBetSlipRequest_StakeMoney_AcceptsRealisticAmounts(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"minimum stake", `{"selectionIds":["s1"],"stake":1}`, "1.00"},
+		{"maximum stake", `{"selectionIds":["s1"],"stake":10000}`, "10000.00"},
+		{"two decimals", `{"selectionIds":["s1"],"stake":33.10}`, "33.10"},
+		{"one cent", `{"selectionIds":["s1"],"stake":0.01}`, "0.01"},
+		{"scientific notation", `{"selectionIds":["s1"],"stake":1e3}`, "1000.00"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var req dto.BetSlipRequest
+			require.NoError(t, json.Unmarshal([]byte(tt.body), &req))
+
+			got, err := req.StakeMoney()
+
+			require.NoError(t, err)
+			require.Equal(t, tt.want, got.String())
+		})
+	}
 }
