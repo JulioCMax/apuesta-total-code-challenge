@@ -83,6 +83,25 @@ func TestOdds_CombineIsRound2Product(t *testing.T) {
 	require.Equal(t, "3.89", combined.String())
 }
 
+// TestOdds_JSONFixed2 proves Odds marshals as an unquoted fixed-2 JSON
+// number (D13, symmetric with Money), e.g. 1.85 — needed by the HTTP layer
+// (Phase 12) to serialize a selection's/leg's odds without ever emitting
+// decimal.Decimal's unexported struct fields.
+func TestOdds_JSONFixed2(t *testing.T) {
+	o, err := money.NewOddsFromFloat(1.85)
+	require.NoError(t, err)
+
+	raw, err := json.Marshal(o)
+	require.NoError(t, err)
+	require.Equal(t, "1.85", string(raw))
+
+	o2, err := money.NewOddsFromFloat(2.5)
+	require.NoError(t, err)
+	raw2, err := json.Marshal(o2)
+	require.NoError(t, err)
+	require.Equal(t, "2.50", string(raw2))
+}
+
 // TestNewOdds_EnforcesMinimum proves Odds rejects anything below the house
 // minimum of 1.01 and accepts values at or above it.
 func TestNewOdds_EnforcesMinimum(t *testing.T) {
