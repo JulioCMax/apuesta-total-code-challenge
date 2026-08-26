@@ -46,6 +46,13 @@ func (o Odds) String() string {
 	return o.d.StringFixed(2)
 }
 
+// MarshalJSON renders Odds as an unquoted fixed-2 JSON number (D13,
+// symmetric with Money.MarshalJSON), e.g. 1.85. Without this, encoding/json
+// would marshal Odds' unexported decimal.Decimal field as "{}".
+func (o Odds) MarshalJSON() ([]byte, error) {
+	return []byte(o.d.StringFixed(2)), nil
+}
+
 // Combine multiplies all given odds and rounds the product exactly once via
 // Round2 (D7): combinedOdds = Round2(product of odds). This is the only
 // place combined odds are computed, so potentialReturns computed from the
