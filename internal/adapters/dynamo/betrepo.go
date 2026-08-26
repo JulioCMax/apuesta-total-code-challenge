@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"strconv"
 	"strings"
 	"time"
@@ -23,23 +24,78 @@ import (
 // item.
 const entityTypeBet = "Bet"
 
+// BetStore is the exact subset of *dynamodb.Client that BetRepository
+// uses. Depending on the interface rather than the concrete client is what
+// makes DynamoDB's own failure modes testable: dynamodb-local serialises
+// transactions and can therefore NEVER emit a TransactionConflict
+// cancellation, so the only way to prove the retry path is to hand this
+// seam a store that returns a crafted TransactionCanceledException.
+// *dynamodb.Client satisfies it as-is.
+type BetStore interface {
+	TransactWriteItems(ctx context.Context, params *dynamodb.TransactWriteItemsInput, optFns ...func(*dynamodb.Options)) (*dynamodb.TransactWriteItemsOutput, error)
+	GetItem(ctx context.Context, params *dynamodb.GetItemInput, optFns ...func(*dynamodb.Options)) (*dynamodb.GetItemOutput, error)
+	Query(ctx context.Context, params *dynamodb.QueryInput, optFns ...func(*dynamodb.Options)) (*dynamodb.QueryOutput, error)
+}
+
+// TransactionRetryPolicy bounds how often a placement transaction cancelled
+// purely by contention is retried, and how long to wait between attempts.
+// Backoff receives the 1-based attempt number that just failed.
+type TransactionRetryPolicy struct {
+	MaxAttempts int
+	Backoff     func(attempt int) time.Duration
+}
+
+// defaultTransactionRetryPolicy retries a contended placement 3 times after
+// the first attempt, backing off ~25ms, ~50ms, ~100ms with jitter. The
+// budget is deliberately small: a placement is a synchronous request, and
+// contention on a single user's profile item resolves in milliseconds or
+// not at all.
+func defaultTransactionRetryPolicy() TransactionRetryPolicy {
+	return TransactionRetryPolicy{
+		MaxAttempts: 4,
+		Backoff: func(attempt int) time.Duration {
+			base := 25 * time.Millisecond << (attempt - 1)
+			return base/2 + time.Duration(rand.Int63n(int64(base/2)+1))
+		},
+	}
+}
+
+// BetRepositoryOption customises a BetRepository at construction.
+type BetRepositoryOption func(*BetRepository)
+
+// WithTransactionRetry overrides the default transaction retry policy.
+// Tests use it to make the retry path deterministic and instantaneous.
+func WithTransactionRetry(policy TransactionRetryPolicy) BetRepositoryOption {
+	return func(r *BetRepository) { r.retry = policy }
+}
+
 // BetRepository implements application/betslip.BetRepository: it debits
 // the balance and stores the bet atomically when funds suffice (D8), or
 // persists the same bet with status "rejected" — no balance update — and
 // returns ErrInsufficientFunds when they do not (D15). All concurrency
 // correctness lives in the single TransactWriteItems call in Place.
 type BetRepository struct {
-	client         *dynamodb.Client
+	client         BetStore
 	table          string
 	idempotencyTTL time.Duration
+	retry          TransactionRetryPolicy
 }
 
 // NewBetRepository builds a BetRepository backed by client, targeting
 // table, with idempotency records expiring after idempotencyTTL
 // (IDEMPOTENCY_TTL from configuration; zero disables the expiresAt
 // attribute).
-func NewBetRepository(client *dynamodb.Client, table string, idempotencyTTL time.Duration) *BetRepository {
-	return &BetRepository{client: client, table: table, idempotencyTTL: idempotencyTTL}
+func NewBetRepository(client BetStore, table string, idempotencyTTL time.Duration, opts ...BetRepositoryOption) *BetRepository {
+	r := &BetRepository{
+		client:         client,
+		table:          table,
+		idempotencyTTL: idempotencyTTL,
+		retry:          defaultTransactionRetryPolicy(),
+	}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
 }
 
 // Place implements the PlaceBet Transaction from design.md: attempt 1 is a
@@ -94,7 +150,7 @@ func (r *BetRepository) Place(ctx context.Context, b domainbetslip.Bet, idempote
 		})
 	}
 
-	_, err := r.client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
+	err := r.transactWithConflictRetry(ctx, items)
 	if err == nil {
 		return accepted, false, nil
 	}
@@ -123,6 +179,78 @@ func (r *BetRepository) Place(ctx context.Context, b domainbetslip.Bet, idempote
 	// idx 1 (bet Put) failing means a ULID collision — transient and never
 	// expected in practice (design.md).
 	return domainbetslip.Bet{}, false, fmt.Errorf("dynamo: place: unexpected transaction cancellation: %+v", reasons)
+}
+
+// transactWithConflictRetry runs one TransactWriteItems call, retrying
+// only when DynamoDB cancelled it purely because a concurrent transaction
+// held one of the same items ("TransactionConflict"). That is exactly what
+// two simultaneous placements by the same user produce: both contend on
+// the single USER#<id>/PROFILE balance item.
+//
+// aws-sdk-go-v2's standard retryer does NOT retry
+// TransactionCanceledException, so without this loop a contended placement
+// surfaced as an unclassified 500 with NO bet persisted — neither accepted
+// nor rejected — which is precisely the outcome the concurrency
+// requirement forbids.
+//
+// A cancellation that carries ANY ConditionalCheckFailed reason is never
+// retried: that is a verdict about the request (insufficient balance, an
+// already-used idempotency key) and the caller must be answered, not made
+// to wait. Every other error is returned untouched for the caller's own
+// branching.
+func (r *BetRepository) transactWithConflictRetry(ctx context.Context, items []types.TransactWriteItem) error {
+	maxAttempts := r.retry.MaxAttempts
+	if maxAttempts < 1 {
+		maxAttempts = 1
+	}
+
+	for attempt := 1; ; attempt++ {
+		_, err := r.client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
+		if err == nil {
+			return nil
+		}
+
+		canceled, isCanceled := AsTransactionCanceled(err)
+		if !isCanceled {
+			return err
+		}
+		reasons := canceled.CancellationReasons
+		if !AnyTransactionConflict(reasons) || AnyConditionalCheckFailed(reasons) {
+			return err
+		}
+
+		if attempt >= maxAttempts {
+			return fmt.Errorf("dynamo: transaction still contended after %d attempts: %w", attempt, domainbetslip.ErrConcurrencyConflict)
+		}
+		if waitErr := sleepCtx(ctx, r.backoff(attempt)); waitErr != nil {
+			return waitErr
+		}
+	}
+}
+
+// backoff returns the configured wait before the next attempt, tolerating
+// a policy that supplies no Backoff function at all.
+func (r *BetRepository) backoff(attempt int) time.Duration {
+	if r.retry.Backoff == nil {
+		return 0
+	}
+	return r.retry.Backoff(attempt)
+}
+
+// sleepCtx waits for d, or aborts early with ctx's error when the caller
+// gives up first — a retry loop must never outlive its request.
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return ctx.Err()
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 // persistRejection is attempt 2: a balance-free TransactWriteItems that
@@ -156,7 +284,7 @@ func (r *BetRepository) persistRejection(
 		})
 	}
 
-	_, err := r.client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: items})
+	err := r.transactWithConflictRetry(ctx, items)
 	if err == nil {
 		return domainbetslip.Bet{}, false, domainbetslip.ErrInsufficientFunds{
 			BetID:    rejected.ID,

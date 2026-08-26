@@ -118,6 +118,11 @@ func Classify(err error) (status int, code, message string, details map[string]a
 		return http.StatusBadRequest, "VALIDATION_ERROR", "Debe indicar al menos una selección.", nil
 	case errors.Is(err, domainbetslip.ErrIdempotencyKeyReuse):
 		return http.StatusConflict, "IDEMPOTENCY_KEY_REUSED", "La clave de idempotencia ya fue utilizada con datos diferentes.", nil
+	case errors.Is(err, domainbetslip.ErrConcurrencyConflict):
+		// Transient contention, not a defect: nothing was persisted and
+		// nothing was debited, so the caller may safely retry the exact
+		// same request. 503 says that; an unclassified 500 would not.
+		return http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE", "El servicio está temporalmente ocupado. Vuelva a intentarlo en unos instantes.", nil
 	case errors.Is(err, domainevent.ErrEventNotFound):
 		return http.StatusNotFound, "EVENT_NOT_FOUND", "El evento solicitado no existe.", nil
 	case errors.Is(err, domainevent.ErrInvalidDateRange):

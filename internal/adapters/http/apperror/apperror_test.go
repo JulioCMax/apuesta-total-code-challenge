@@ -2,6 +2,7 @@ package apperror_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -67,6 +68,11 @@ func TestWrite_MapsTypedDomainErrorsToTheirDocumentedStatusAndCode(t *testing.T)
 		{"selection unavailable", domainbetslip.ErrSelectionUnavailable, http.StatusUnprocessableEntity, "SELECTION_UNAVAILABLE"},
 		{"empty slip", domainbetslip.ErrEmptySlip, http.StatusBadRequest, "VALIDATION_ERROR"},
 		{"idempotency key reused", domainbetslip.ErrIdempotencyKeyReuse, http.StatusConflict, "IDEMPOTENCY_KEY_REUSED"},
+		// A placement abandoned after its bounded contention retries is
+		// transient: nothing was persisted and nothing was debited, so the
+		// caller must be told to retry (503), never handed an unclassified
+		// 500 that looks like a defect.
+		{"concurrency conflict", fmt.Errorf("dynamo: place: %w", domainbetslip.ErrConcurrencyConflict), http.StatusServiceUnavailable, "SERVICE_UNAVAILABLE"},
 		{"event not found", domainevent.ErrEventNotFound, http.StatusNotFound, "EVENT_NOT_FOUND"},
 		{"invalid date range", domainevent.ErrInvalidDateRange, http.StatusBadRequest, "INVALID_DATE_RANGE"},
 		{"invalid credentials", account.ErrInvalidCredentials, http.StatusUnauthorized, "INVALID_CREDENTIALS"},

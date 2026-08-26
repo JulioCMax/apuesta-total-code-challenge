@@ -26,6 +26,14 @@ var (
 	// ErrIdempotencyKeyReuse is returned when a placement's Idempotency-Key
 	// was already used with a different payload.
 	ErrIdempotencyKeyReuse = errors.New("betslip: idempotency key reused with a different payload")
+
+	// ErrConcurrencyConflict is returned when a placement could not be
+	// committed because concurrent placements kept contending for the same
+	// balance, and the repository's bounded retry budget ran out. It is a
+	// transient condition: nothing was persisted and nothing was debited,
+	// and the identical request may simply be retried. The HTTP layer maps
+	// it to a retryable 503, never to an unclassified 500.
+	ErrConcurrencyConflict = errors.New("betslip: placement could not be committed due to concurrent contention")
 )
 
 // ErrSameEventCombo is returned when 2+ selections in a combo belong to the
