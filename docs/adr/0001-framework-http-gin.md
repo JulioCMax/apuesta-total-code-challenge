@@ -6,12 +6,16 @@
 
 ## Contexto
 
-La API expone nueve rutas divididas en dos grupos con requisitos distintos: rutas
-públicas (`/health`, `/docs`, `/openapi.yaml`, login, catálogo de eventos y cálculo
-de la apuesta) y rutas protegidas por JWT (`place`, `balance`, `bets`). El servicio
-necesita, además, una cadena de middleware ordenada (recovery, request ID, logging
-estructurado, rate limit por IP y verificación de token) y la posibilidad de aplicar
-parte de esa cadena solo a un subárbol de rutas.
+La API expone once rutas divididas en dos grupos con requisitos distintos: ocho rutas
+públicas (`/health`, `/docs`, `/openapi.yaml`, `/app`, login, listado y detalle del
+catálogo de eventos, y cálculo de la apuesta) y tres protegidas por JWT (`place`,
+`balance`, `bets`). El servicio necesita, además, una cadena de middleware ordenada
+(recovery, request ID, logging estructurado, límite de tamaño del cuerpo, rate limit
+por IP y verificación de token) y la posibilidad de aplicar parte de esa cadena solo a
+un subárbol de rutas: el rate limit cubre `/api/v1` pero no `/health`, `/docs` ni
+`/app`, y la verificación de token cubre únicamente el subgrupo protegido. `/docs` y
+`/app` son superficies de demostración servidas desde el propio binario; su contenido y
+su procedencia se deciden en ADR-0010.
 
 El exceso de acoplamiento a un framework es un riesgo real en un proyecto que se
 presenta como arquitectura hexagonal: si el framework aparece en el dominio o en los
@@ -55,8 +59,23 @@ adaptador, no una reescritura.
   composición de `http.Handler` de la librería estándar.
 - **Neutras**: `SetTrustedProxies(nil)` es obligatorio con Gin para que `ClientIP()`
   resuelva a la dirección real y no a una cabecera `X-Forwarded-For` falsificable
-  (véase ADR-0003 y D11). Es un detalle específico del framework que quedó anclado por
-  una prueba: `TestRateLimit_KeyIsClientIPNeverXForwardedFor`.
+  (véase D11, y ADR-0004 sobre el alcance por instancia del límite de tasa). Es un
+  detalle específico del framework que quedó anclado por una prueba:
+  `TestRateLimit_KeyIsClientIPNeverXForwardedFor`.
+- **Neutras**: Gin trae dos comportamientos por defecto que hubo que corregir de forma
+  explícita, ambos invisibles hasta que se prueban. `HandleMethodNotAllowed` es `false`,
+  de modo que una ruta existente invocada con un método no soportado cae en `NoRoute`
+  (404) en lugar de `NoMethod` (405); y, sin registrar ninguno de los dos, Gin sirve su
+  propio cuerpo en texto plano —sin `requestId` y sin la envolvente de error del
+  contrato—, lo que además anula el registro de la ruta en el logging. `NewRouter`
+  activa el primero y registra ambos manejadores con la envolvente estándar.
+- **Neutras**: `middleware.BodyLimit` se aplica en la cadena global, de modo que ninguna
+  ruta —incluidas las que no leen cuerpo— puede llegar a bufferizar un cuerpo sin
+  límite. No rechaza nada por sí mismo: envuelve `c.Request.Body` en un
+  `http.MaxBytesReader` de 1 MiB, así que un cuerpo desmedido hace fallar la lectura y
+  los handlers lo tratan con su camino de error de binding ya existente. El resultado es
+  la misma envolvente `VALIDATION_ERROR` 400 que cualquier otra solicitud malformada, sin
+  código de error nuevo ni rama adicional.
 - El mismo `*gin.Engine` se sirve en local mediante `http.Server` y en AWS mediante
   `aws-lambda-go-api-proxy`; el framework elegido no obliga a duplicar el router
   (véase ADR-0004).
