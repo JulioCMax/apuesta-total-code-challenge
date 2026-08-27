@@ -60,10 +60,11 @@ saldo refleja un único débito. Es el requisito de concurrencia hecho visible.
 8. [Despliegue en AWS y coste](#8-despliegue-en-aws-y-coste)
 9. [Cómo se traslada esta demostración a EKS](#9-cómo-se-traslada-esta-demostración-a-eks)
 10. [Mejora futura: publicación de eventos](#10-mejora-futura-publicación-de-eventos)
-11. [Límites conocidos y procedencia de los datos](#11-límites-conocidos-y-procedencia-de-los-datos)
-12. [Pruebas](#12-pruebas)
-13. [Estrategia de control de versiones](#13-estrategia-de-control-de-versiones)
-14. [Checklist de entrega](#14-checklist-de-entrega)
+11. [Mejora futura: juego responsable](#11-mejora-futura-juego-responsable)
+12. [Límites conocidos y procedencia de los datos](#12-límites-conocidos-y-procedencia-de-los-datos)
+13. [Pruebas](#13-pruebas)
+14. [Estrategia de control de versiones](#14-estrategia-de-control-de-versiones)
+15. [Checklist de entrega](#15-checklist-de-entrega)
 
 ---
 
@@ -399,7 +400,7 @@ lo impide en el orden en que llegaron las selecciones, de forma determinista.
 
 > Los dos eventos que aparecen como no aptos para Bet Builder son **datos autorados para
 > la demostración**: en `data.json` los 24 eventos lo traen habilitado. La procedencia
-> completa está en la [sección 11](#datos-autorados-para-la-demostración-bet-builder-y-super-cuota).
+> completa está en la [sección 12](#datos-autorados-para-la-demostración-bet-builder-y-super-cuota).
 
 **8. Super Cuota: cuota mejorada, con la original a la vista**
 
@@ -1216,7 +1217,70 @@ operación. Detalle completo en
 
 ---
 
-## 11. Límites conocidos y procedencia de los datos
+## 11. Mejora futura: juego responsable
+
+Apuesta Total opera bajo la licencia que regula la **Ley 31557**, reglamentada por el
+**DS 005-2023-MINCETUR** y en vigencia plena desde el **9 de febrero de 2024**. Esa norma
+no deja el juego responsable como una declaración de intenciones: lo **define** —el juego
+como recreación e integración social que no altera el comportamiento de la persona en su
+ámbito personal, familiar, laboral o social— y le impone obligaciones concretas al
+operador autorizado.
+
+Cuatro de esas obligaciones se traducen en código: verificación de edad e identidad al
+registrar al jugador, **límites de depósito**, **procedimientos de exclusión voluntaria**
+—el usuario debe poder dejar de jugar cuando quiera y por el tiempo que considere
+apropiado— y la consulta al **Registro de Personas Prohibidas** de acceder a
+establecimientos de juego, que administra la DGJCMT bajo la Ley 29907.
+
+Esta API no las implementa. **Es una decisión de alcance tomada con la norma sobre la
+mesa, no un desconocimiento del marco en el que opera el negocio.**
+
+**Lo que el diseño resolvería**, y por qué encaja sin dañar lo que ya funciona:
+
+| Obligación | Superficie |
+|---|---|
+| Límite de depósito | `PUT /api/v1/responsible-gaming/limits`, por período (diario, semanal, mensual) |
+| — exige depósitos primero | `POST /api/v1/balance/deposit`, con su propio abono atómico |
+| Exclusión voluntaria | `POST /api/v1/responsible-gaming/self-exclusion` |
+| Volver antes de tiempo | `POST …/self-exclusion/revocation`, diferida por un período de enfriamiento |
+| Estado y consumo | `GET /api/v1/responsible-gaming` |
+
+A eso se sumaría un **límite de apuesta acumulada** que la norma no exige, porque un tope
+de depósito por sí solo no protege a quien ya tiene saldo disponible.
+
+**El detalle que lo hace viable**: la autoexclusión se resuelve como **una sola cláusula
+añadida** a la `ConditionExpression` del débito que ya existe —
+`selfExcludedUntil <= :now`, con el instante guardado como segundos de época y no como
+texto, porque `RFC3339Nano` es de ancho variable y su orden lexicográfico no es el orden
+cronológico—. Una cláusula, ningún ítem nuevo en la transacción de colocación. Eso
+importa: `betrepo.go` identifica el ítem de idempotencia por su índice, de modo que
+agregar un elemento a esa transacción rompería silenciosamente su detección.
+
+Con una sola cláusula añadida, `ConditionalCheckFailedException` sigue siendo una
+decisión de dos salidas —saldo insuficiente o cuenta excluida— y ambas se distinguen
+leyendo la imagen `ALL_OLD` que el código ya recupera hoy.
+
+**Revocar tampoco costaría nada nuevo**: es
+`selfExcludedUntil = min(selfExcludedUntil, ahora + enfriamiento)` sobre el mismo campo.
+El `min()` no es cosmético — sin él, revocar una exclusión a la que le quedan seis horas
+la alargaría a veinticuatro, castigando al usuario por pedir volver. Y la asimetría es
+deliberada: debilitar la protección se difiere, reforzarla es inmediato.
+
+**Lo que quedaría fuera aunque se implementara todo lo anterior**, dicho sin rodeos: la
+verificación de identidad y edad, el cruce contra el Registro de Personas Prohibidas
+—que es un registro estatal sin interfaz pública— y el impuesto sobre los ingresos
+brutos. Una demostración inspirada en las obligaciones reales **no es cumplimiento
+normativo**, y presentarla como tal sería deshonesto.
+
+**Por qué no está construido**: es la única de las funcionalidades evaluadas que modifica
+la transacción de colocación, es decir, exactamente el camino que este reto evalúa con
+más atención. Frente a un plazo de entrega, la relación entre el riesgo de tocar el
+núcleo que ya funciona y el valor de la funcionalidad añadida no la justificaba. El
+diseño quedó completo; la implementación, priorizada fuera.
+
+---
+
+## 12. Límites conocidos y procedencia de los datos
 
 Esta sección enumera lo que el sistema **no** hace y lo que se decidió sobre datos
 imperfectos. Es información deliberadamente explícita.
@@ -1328,7 +1392,7 @@ presente en la fuente. La respuesta refleja el dato real.
 
 ---
 
-## 12. Pruebas
+## 13. Pruebas
 
 [![CI](https://github.com/JulioCMax/apuesta-total-code-challenge/actions/workflows/ci.yml/badge.svg)](https://github.com/JulioCMax/apuesta-total-code-challenge/actions/workflows/ci.yml)
 
@@ -1408,7 +1472,7 @@ git log --oneline --reverse --format='%s' | grep -E '^(test|feat)' | head -20
 
 ---
 
-## 13. Estrategia de control de versiones
+## 14. Estrategia de control de versiones
 
 ### Lo que hace este repositorio
 
@@ -1508,7 +1572,7 @@ compañero no puede deducir del diff.
 
 ---
 
-## 14. Checklist de entrega
+## 15. Checklist de entrega
 
 - [x] Repositorio público con el código completo
 - [x] **Demostración desplegada y accesible**: aplicación web, Swagger UI y API en
