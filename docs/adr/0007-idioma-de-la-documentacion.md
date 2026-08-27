@@ -1,7 +1,8 @@
 # ADR-0007: Idioma de la documentación y del código
 
 - **Estado**: aceptada
-- **Ámbito**: `README.md`, `docs/adr/`, `api/openapi.yaml`, mensajes de error de la API, código fuente
+- **Ámbito**: `README.md`, `docs/adr/`, `api/openapi.yaml`, mensajes de error de la API,
+  código fuente, mensajes de commit
 
 ## Contexto
 
@@ -41,6 +42,10 @@ Se adopta la **separación por audiencia**, con una frontera precisa:
 - El texto visible del cliente web embebido (`internal/adapters/web/assets/`), por la
   misma razón que los mensajes de error: es prosa dirigida a una persona. Sus
   identificadores, nombres de componente y variables siguen en inglés (ADR-0010).
+- El **asunto y el cuerpo** de los mensajes de commit. El cuerpo es prosa explicativa
+  —dice por qué se hizo el cambio y qué alternativa se descartó— y cae por tanto del
+  lado español de la frontera. El asunto lo acompaña para que el mensaje no cambie de
+  idioma a mitad.
 
 **En inglés (convención de la industria, sin traducir):**
 
@@ -50,7 +55,9 @@ Se adopta la **separación por audiencia**, con una frontera precisa:
   (`potentialReturns`, `combinedOdds`), las variables de entorno
   (`BETSLIP_MIN_STAKE_AMOUNT`), los códigos de error legibles por máquina
   (`INSUFFICIENT_FUNDS`), los nombres de esquema de OpenAPI y las claves de DynamoDB.
-- Los mensajes de commit.
+- El **tipo y el ámbito** de los mensajes de commit: `feat`, `fix`, `docs`, `test`,
+  `chore`, `refactor`, `build`, y ámbitos como `domain`, `application`, `adapters` o
+  `platform`.
 
 La regla que resuelve cualquier caso dudoso: **la prosa explicativa se escribe en
 español; todo lo que un programa lee, compara o enruta se escribe en inglés.** Por eso
@@ -70,6 +77,23 @@ una respuesta de error combina ambos idiomas de forma deliberada:
 `code` es un contrato estable sobre el que un cliente puede ramificar; `message` es
 texto para una persona.
 
+El mensaje de commit reparte sus idiomas por ese mismo criterio, y el corte cae donde
+debe: el tipo y el ámbito son precisamente lo que un programa lee, porque
+`git log --oneline --grep "^feat(domain)"` responde «qué entró al dominio» sin abrir un
+fichero. El asunto y el cuerpo no los consulta ninguna herramienta; los lee una persona.
+
+```
+feat(deploy): recurrir a una API Gateway cuando la cuenta restringe las Function URLs
+```
+
+**Los primeros 81 commits del historial están escritos íntegramente en inglés.** El
+cambio se produjo en `feat(events): exponer la metadata de interfaz en el listado`, y los
+19 posteriores siguen la regla que este ADR fija ahora. Se deja constancia del corte en
+lugar de reescribir el historial, por dos razones: un historial es el registro de lo que
+ocurrió, y uniformarlo a posteriori lo convierte en un registro peor; y esos 81 mensajes
+están bien escritos en inglés, de modo que traducirlos en masa sólo degradaría su prosa
+a cambio de una apariencia de coherencia.
+
 Se emplea un **registro formal y neutro**: tratamiento impersonal o de usted, sin
 localismos ni voseo, de modo que el texto resulte natural para cualquier lector
 hispanohablante.
@@ -86,5 +110,10 @@ producto y sus decisiones, no el andamiaje empleado para producirlo.
 - **Negativas**: la frontera debe respetarse de forma consistente. Un identificador en
   español o un párrafo de documentación en inglés delatarían de inmediato una regla no
   aplicada.
+- **Negativas**: el historial de commits queda partido en dos idiomas, y quien lo recorra
+  entero verá el corte. Es el precio de haber cambiado de criterio a mitad del proyecto;
+  la alternativa —reescribir 81 mensajes— cuesta más de lo que arregla, y la sección de
+  control de versiones del README remite aquí para que el corte se lea como una decisión
+  registrada y no como un descuido.
 - **Neutras**: el README abre con una nota breve que enuncia esta regla, para que el
   criterio quede explícito desde la primera línea en lugar de deducirse.

@@ -1210,17 +1210,24 @@ git log --oneline --reverse --format='%s' | grep -E '^(test|feat)' | head -20
 
 | | |
 |---|---|
-| Commits | 99 |
+| Commits | 100 |
 | Fusiones | 0 — historial completamente lineal |
 | Ramas | una: `main` |
-| Commits con cuerpo explicativo | 81 de 99 (~105 palabras de media) |
+| Commits con cuerpo explicativo | 82 de 100 (~106 palabras de media) |
 
 **Convención de mensajes**: [Conventional Commits](https://www.conventionalcommits.org/es/).
-Los tipos empleados son `feat` (31), `test` (25), `fix` (21), `docs` (15), `chore` (4),
+Los tipos empleados son `feat` (31), `test` (25), `fix` (21), `docs` (16), `chore` (4),
 `refactor` (2) y `build` (1). Los **ámbitos son las capas de la arquitectura** —`domain`,
 `application`, `adapters`, `platform`— más `scripts`, `web` y `readme`, de modo que
 `git log --oneline --grep "^feat(domain)"` responde «qué se añadió al dominio» sin abrir
 un solo fichero.
+
+**El idioma también sigue esa frontera**: tipo y ámbito en inglés, porque son lo que se
+consulta con `--grep`; asunto y cuerpo en español, porque los lee una persona. Los
+primeros 81 commits están íntegramente en inglés: el criterio cambió a mitad del
+proyecto y el corte se dejó registrado en
+[ADR-0007](docs/adr/0007-idioma-de-la-documentacion.md) en vez de reescribir el
+historial.
 
 **El asunto dice qué; el cuerpo dice por qué.** Esa es la regla, y es la razón de que tres
 de cada cuatro commits tengan cuerpo. Un diff ya muestra perfectamente lo que cambió: lo
@@ -1249,7 +1256,7 @@ acompañado del siguiente no es una unidad revisable, es un fragmento.
 
 Comprobado recorriendo los **doce commits más recientes que tocan código** con
 `go build ./...` y `go test -short ./...` en cada punto del historial: los doce pasan de
-forma aislada. La verificación se acota a esa ventana porque recorrer los noventa y nueve
+forma aislada. La verificación se acota a esa ventana porque recorrer los cien
 tarda más de lo que aporta; el criterio, en cambio, se aplicó desde el primero.
 
 ### Por qué lineal sobre `main` aquí
