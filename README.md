@@ -1161,6 +1161,8 @@ presente en la fuente. La respuesta refleja el dato real.
 
 ## 12. Pruebas
 
+[![CI](https://github.com/JulioCMax/apuesta-total-code-challenge/actions/workflows/ci.yml/badge.svg)](https://github.com/JulioCMax/apuesta-total-code-challenge/actions/workflows/ci.yml)
+
 **178 funciones de prueba en 42 archivos**, en cuatro niveles.
 
 ```bash
