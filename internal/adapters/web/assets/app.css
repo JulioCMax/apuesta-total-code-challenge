@@ -596,10 +596,39 @@ button { font: inherit; color: inherit; }
 
 /* --- floating bet slip button ---------------------------------------------- */
 
-.fab {
+/*
+ * The floating button is anchored to the app column, not to the window.
+ *
+ * A plain `position: fixed` resolves against the viewport, so on any screen
+ * wider than the column the button drifts to the far corner of the window
+ * and floats hundreds of pixels away from the interface it belongs to.
+ *
+ * The fix reuses the shape the bottom sheet already uses: a fixed,
+ * full-screen layer that centres a column-width rail, with the button
+ * positioned inside that rail. The layer is click-through
+ * (`pointer-events: none`) so it never steals a tap from the calendar
+ * underneath; only the button itself takes pointer events back.
+ */
+.fab-layer {
   position: fixed;
-  bottom: 18px;
+  inset: 0;
   z-index: 40;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.fab-rail {
+  position: relative;
+  width: 100%;
+  max-width: var(--at-column);
+}
+
+.fab {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  pointer-events: auto;
   width: 60px;
   height: 60px;
   border: 0;

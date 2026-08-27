@@ -480,14 +480,23 @@ const App = {
         </section>
       </main>
 
-      <button class="fab" type="button" style="right:18px" @click="slipOpen = true" aria-label="Abrir cupón">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M6 3h9l4 4v14H6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
-          <path d="M14 3v5h5M9 13h7M9 17h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-        </svg>
-        <span class="fab-label">Cupón</span>
-        <span class="fab-count" v-if="legs.length">{{ legs.length }}</span>
-      </button>
+      <!--
+        Hidden while the sheet is open: the button opens a panel that is
+        already on screen, so leaving it visible beside the panel only reads
+        as a stray control.
+      -->
+      <div class="fab-layer" v-if="!slipOpen">
+        <div class="fab-rail">
+          <button class="fab" type="button" @click="slipOpen = true" aria-label="Abrir cupón">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 3h9l4 4v14H6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+              <path d="M14 3v5h5M9 13h7M9 17h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <span class="fab-label">Cupón</span>
+            <span class="fab-count" v-if="legs.length">{{ legs.length }}</span>
+          </button>
+        </div>
+      </div>
 
       <BetSlip
         v-if="slipOpen"
