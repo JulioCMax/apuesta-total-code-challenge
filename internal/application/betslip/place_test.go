@@ -112,6 +112,51 @@ func TestPlace_RejectsReusedKeyWithDifferentPayload(t *testing.T) {
 	require.ErrorIs(t, err, domainbetslip.ErrIdempotencyKeyReuse)
 }
 
+// TestPlace_ThreadsIsBetBuilderIntoQuote proves PlaceCommand.IsBetBuilder
+// threads unchanged into BetSlip.AllowSameEventCombo, letting a same-event
+// combo reach the repository when both the opt-in and the event's own flag
+// are true (spec: bet-slip-placement/Bet Builder Flag Threading (Place)).
+func TestPlace_ThreadsIsBetBuilderIntoQuote(t *testing.T) {
+	sel1 := domainevent.SelectionRef{ID: "sel-1", EventID: "evt-1", Odds: mustOdds(t, "1.85"), EventBetBuilderEnabled: true}
+	sel2 := domainevent.SelectionRef{ID: "sel-2", EventID: "evt-1", Odds: mustOdds(t, "2.10"), EventBetBuilderEnabled: true}
+	catalog := newFakeCatalog(sel1, sel2)
+	repo := &fakeBetRepository{placeResult: domainbetslip.Bet{ID: "bet-1", Status: domainbetslip.BetStatusAccepted}}
+	uc := appbetslip.NewPlace(catalog, repo, fakeIDGenerator{id: "bet-1"}, defaultBoundsFixture(t))
+
+	_, err := uc.Execute(context.Background(), appbetslip.PlaceCommand{
+		UserID:         "user-1",
+		SelectionIDs:   []string{"sel-1", "sel-2"},
+		Stake:          mustMoney(t, "100.00"),
+		IdempotencyKey: "key-1",
+		IsBetBuilder:   true,
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, domainbetslip.BetTypeCombo, repo.lastBet.Type)
+}
+
+// TestPlace_IsBetBuilderOmittedStillRejectsSameEventCombo mirrors
+// Calculate's default-false regression proof at the placement boundary:
+// the repository must never be reached.
+func TestPlace_IsBetBuilderOmittedStillRejectsSameEventCombo(t *testing.T) {
+	sel1 := domainevent.SelectionRef{ID: "sel-1", EventID: "evt-1", Odds: mustOdds(t, "1.85"), EventBetBuilderEnabled: true}
+	sel2 := domainevent.SelectionRef{ID: "sel-2", EventID: "evt-1", Odds: mustOdds(t, "2.10"), EventBetBuilderEnabled: true}
+	catalog := newFakeCatalog(sel1, sel2)
+	repo := &fakeBetRepository{}
+	uc := appbetslip.NewPlace(catalog, repo, fakeIDGenerator{id: "bet-1"}, defaultBoundsFixture(t))
+
+	_, err := uc.Execute(context.Background(), appbetslip.PlaceCommand{
+		UserID:         "user-1",
+		SelectionIDs:   []string{"sel-1", "sel-2"},
+		Stake:          mustMoney(t, "100.00"),
+		IdempotencyKey: "key-1",
+	})
+
+	var sameEvent domainbetslip.ErrSameEventCombo
+	require.ErrorAs(t, err, &sameEvent)
+	require.Empty(t, repo.lastBet.ID, "the repository must never be reached when Quote refuses the combo")
+}
+
 // TestPlace_ReplayOfRejectedKeyReturnsRecordedRejection proves replaying a
 // key that previously recorded a rejection returns that recorded rejection
 // verbatim — never an error, and never a fresh re-evaluation, even if the
