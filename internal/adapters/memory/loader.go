@@ -129,6 +129,12 @@ func buildEvent(re rawEvent) (event.Event, error) {
 		return event.Event{}, err
 	}
 
+	// betBuilderEnabled starts from the seed's own flag and is forced false
+	// for the small authored overlay in seed.BetBuilderDisabled — see that
+	// var's doc comment for why the overlay exists (data.json itself
+	// carries no disabled event at all).
+	betBuilderEnabled := re.Settings.IsBetBuilderEnabled && !seed.BetBuilderDisabled[re.ID]
+
 	return event.Event{
 		ID:                  re.ID,
 		Name:                re.EventName,
@@ -142,7 +148,7 @@ func buildEvent(re rawEvent) (event.Event, error) {
 		IsSuspended:         re.IsSuspended,
 		Markets:             markets,
 		HasStatistics:       re.Settings.HasStatistics,
-		IsBetBuilderEnabled: re.Settings.IsBetBuilderEnabled,
+		IsBetBuilderEnabled: betBuilderEnabled,
 	}, nil
 }
 
