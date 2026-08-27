@@ -1,3 +1,4 @@
+# shellcheck shell=bash
 # Shared shell helpers for scripts/deploy-aws.sh and scripts/destroy-aws.sh.
 # Sourced, never executed directly (no shebang, no `set -e` here — the
 # caller owns its own `set -euo pipefail`).

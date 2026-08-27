@@ -144,13 +144,18 @@ echo La API esta lista.
 echo.
 
 rem --- Open the browser ---------------------------------------------------------
-start "" "%API_URL%/docs"
+rem The web client, not the API docs. This launcher exists for a reviewer
+rem who would rather not open a terminal at all, and for that reader the
+rem running application is the useful landing page; /docs is one line down
+rem in the summary below.
+start "" "%API_URL%/app"
 
 rem --- Summary -------------------------------------------------------------------
 echo ==========================================================
 echo   Entorno listo
 echo ==========================================================
 echo.
+echo Aplicacion web (calendario y cupon):    %API_URL%/app
 echo Documentacion interactiva (Swagger UI): %API_URL%/docs
 echo Especificacion OpenAPI 3:               %API_URL%/openapi.yaml
 echo Sonda de vida:                          %API_URL%/health

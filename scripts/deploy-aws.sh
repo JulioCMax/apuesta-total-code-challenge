@@ -59,9 +59,10 @@
 # own ambient AWS credentials (the same ones aws sts get-caller-identity
 # just verified). cmd/seed's dynamo.EnsureTable call is exactly step 1
 # above (idempotent create-if-absent + wait ACTIVE + enable TTL), and its
-# seeding is idempotent by construction (PutUserIfAbsent — SEED_RESET is
-# left at its default "false", so a re-run never clobbers a played-with
-# balance).
+# seeding is idempotent because the demo accounts are resolved by EMAIL
+# (dynamo.UserRepository.SeedUser) rather than by the id minted on each
+# run: re-running adds no duplicate profile and, with SEED_RESET left at
+# its default "false", never clobbers a played-with balance.
 #
 # Usage:
 #   scripts/deploy-aws.sh [options]
@@ -261,7 +262,6 @@ EOF
       --assume-role-policy-document "$(aws_file_uri "$WORKDIR/trust-policy.json")" \
       --description "Execution role for the $FUNCTION_NAME Lambda (managed by scripts/deploy-aws.sh)" \
       >/dev/null
-    NEW_ROLE=true
   fi
 
   ROLE_ARN="$(aws iam get-role --role-name "$ROLE_NAME" --query 'Role.Arn' --output text)"

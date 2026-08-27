@@ -146,7 +146,10 @@ log "La API está lista."
 log ""
 
 # --- Open the browser ---------------------------------------------------------
-DOCS_URL="${API_URL}/docs"
+# The web client, not the API docs: this launcher exists for a reviewer
+# who would rather not open a terminal, and the running application is the
+# useful landing page. /docs is listed in the summary below.
+DOCS_URL="${API_URL}/app"
 if command -v open >/dev/null 2>&1; then
   open "$DOCS_URL" >/dev/null 2>&1 || warn "No se pudo abrir el navegador automáticamente. Ábralo manualmente en: ${DOCS_URL}"
 elif command -v xdg-open >/dev/null 2>&1; then
@@ -160,6 +163,7 @@ log "=========================================================="
 log "  Entorno listo"
 log "=========================================================="
 log ""
+log "Aplicación web (calendario y cupón):    ${API_URL}/app"
 log "Documentación interactiva (Swagger UI): ${API_URL}/docs"
 log "Especificación OpenAPI 3:               ${API_URL}/openapi.yaml"
 log "Sonda de vida:                          ${API_URL}/health"

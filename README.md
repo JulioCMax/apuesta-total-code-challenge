@@ -131,7 +131,8 @@ Antes de levantar el entorno, estos scripts comprueban que Docker esté instalad
 el daemon esté en ejecución, y que el puerto 8080 esté libre (o ya ocupado por una
 ejecución previa de esta misma pila). Luego construyen y levantan los contenedores
 mostrando el progreso de la compilación, esperan hasta 120 segundos a que `/health`
-responda y abren automáticamente `http://localhost:8080/docs`. Ante cualquier falla,
+responda y abren automáticamente la aplicación web en `http://localhost:8080/app`
+(la documentación interactiva queda enlazada en el resumen que imprimen). Ante cualquier falla,
 indican una acción concreta (por ejemplo, revisar los registros con
 `docker compose logs api`) en lugar de mostrar únicamente el error de Docker.
 
