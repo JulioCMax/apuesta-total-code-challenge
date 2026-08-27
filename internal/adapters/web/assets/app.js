@@ -388,14 +388,35 @@ const App = {
       <div class="tabs-wrap">
         <div class="tabs">
           <div class="tabs-brand">fifa 2026<br>world cup</div>
+          <!--
+            Drawn icons rather than the box-drawing characters that stand in
+            for them in a design tool: those render as solid blocks, or not
+            at all, depending on the system font. currentColor makes each one
+            follow its tab's active state for free.
+          -->
           <button class="tab" :class="{ 'is-active': view === 'agenda' }" type="button" @click="setView('agenda')">
-            <span aria-hidden="true">☰</span><span>Agenda</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="2.5" cy="4" r="1.3" fill="currentColor"/>
+              <circle cx="2.5" cy="8" r="1.3" fill="currentColor"/>
+              <circle cx="2.5" cy="12" r="1.3" fill="currentColor"/>
+              <path d="M6 4h8M6 8h8M6 12h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <span>Agenda</span>
           </button>
           <button class="tab" :class="{ 'is-active': view === '3d' }" type="button" @click="setView('3d')">
-            <span aria-hidden="true">▥</span><span>3 Días</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1.3" y="2.7" width="13.4" height="10.6" rx="1.8" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M5.8 2.7v10.6M10.2 2.7v10.6" stroke="currentColor" stroke-width="1.5"/>
+            </svg>
+            <span>3 Días</span>
           </button>
           <button class="tab" :class="{ 'is-active': view === 'week' }" type="button" @click="setView('week')">
-            <span aria-hidden="true">▤</span><span>Semana</span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1.5" y="3.2" width="13" height="11" rx="1.8" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M1.5 6.6h13" stroke="currentColor" stroke-width="1.5"/>
+              <path d="M5 1.6v2.6M11 1.6v2.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+            <span>Semana</span>
           </button>
         </div>
       </div>

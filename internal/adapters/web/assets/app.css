@@ -20,7 +20,6 @@
   --at-surface-alt: #f4f5f7;
   --at-page: #e9eaec;
 
-  --at-green: #1f8b4d;
   --at-green-bg: #e4f4ea;
   --at-blue: #0b63ce;
   --at-blue-bg: #e4eefc;
@@ -460,7 +459,6 @@ button { font: inherit; color: inherit; }
 }
 
 .badge-stats svg { display: block; }
-.badge-pa { background: var(--at-green-bg); color: var(--at-green); }
 .badge-bb { background: var(--at-red-bg); color: var(--at-red); }
 .badge-sc { background: var(--at-blue-bg); color: var(--at-blue); }
 
