@@ -32,12 +32,15 @@ Se adopta la **separación por audiencia**, con una frontera precisa:
 
 **En español (registro formal y neutro):**
 
-- `README.md` y los nueve documentos de `docs/adr/`.
+- `README.md` y los diez documentos de `docs/adr/`.
 - Descripciones, resúmenes y ejemplos de `api/openapi.yaml`.
 - Los mensajes de error orientados al usuario final que viajan en el campo
   `error.message` de la respuesta (por ejemplo, `"Saldo insuficiente para realizar la
   apuesta."`).
 - Las etiquetas del diagrama de arquitectura (`docs/diagrams/arquitectura.svg`).
+- El texto visible del cliente web embebido (`internal/adapters/web/assets/`), por la
+  misma razón que los mensajes de error: es prosa dirigida a una persona. Sus
+  identificadores, nombres de componente y variables siguen en inglés (ADR-0010).
 
 **En inglés (convención de la industria, sin traducir):**
 

@@ -37,7 +37,7 @@ saldo refleja un único débito. Es el requisito de concurrencia hecho visible.
 
 ---
 
-> **Nota de idioma**: la documentación de este repositorio (este README, los nueve ADR
+> **Nota de idioma**: la documentación de este repositorio (este README, los diez ADR
 > de `docs/adr/` y las descripciones de la especificación OpenAPI) está redactada en
 > **español**, para que el equipo evaluador pueda revisar las decisiones de diseño con
 > la mayor comodidad posible. El **código y todos los identificadores** —paquetes,
@@ -617,7 +617,7 @@ internal/
   platform/            config · logging (slog JSON) · id (ULID)
 api/                   openapi.yaml + Swagger UI embebido (go:embed)
 scripts/               deploy-aws.sh · destroy-aws.sh · smoke.sh
-docs/adr/              Los nueve ADR
+docs/adr/              Los diez ADR
 ```
 
 ### Qué abstrae Gin y qué hay debajo
@@ -676,6 +676,7 @@ evaluadas, decisión y consecuencias.
 | [0007](docs/adr/0007-idioma-de-la-documentacion.md) | Idioma de la documentación | Prosa en español, identificadores en inglés |
 | [0008](docs/adr/0008-semilla-de-fase-y-grupo.md) | Semilla de fase y grupo | Dato verificado del sorteo oficial, con camino de reserva que nunca falla |
 | [0009](docs/adr/0009-publicacion-de-eventos-diferida.md) | Publicación de eventos diferida | EventBridge/SNS documentado como mejora futura, no implementado |
+| [0010](docs/adr/0010-cliente-web-y-swagger-ui-embebidos.md) | Cliente web y Swagger UI embebidos | Dependencias vendorizadas y servidas por el binario: sin CDN y sin etapa de compilación |
 
 ---
 
@@ -1293,7 +1294,7 @@ compañero no puede deducir del diff.
       <https://qjdzac3mg6.execute-api.us-east-1.amazonaws.com>
 - [x] `docker compose up --build` levanta todo el entorno con un solo comando
 - [x] README en español con inicio rápido, endpoints, variables de entorno y decisiones
-- [x] Nueve ADR documentando cada decisión de arquitectura
+- [x] Diez ADR documentando cada decisión de arquitectura
 - [x] Diagrama de arquitectura versionado, con su fuente editable
 - [x] OpenAPI 3 y Swagger UI embebidos, funcionales sin conexión
 - [x] Cliente web embebido en `/app` que consume la propia API pública, con la prueba
