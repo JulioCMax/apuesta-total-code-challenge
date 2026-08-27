@@ -1210,13 +1210,13 @@ git log --oneline --reverse --format='%s' | grep -E '^(test|feat)' | head -20
 
 | | |
 |---|---|
-| Commits | 93 |
+| Commits | 99 |
 | Fusiones | 0 — historial completamente lineal |
 | Ramas | una: `main` |
-| Commits con cuerpo explicativo | 75 de 93 (~77 palabras de media) |
+| Commits con cuerpo explicativo | 81 de 99 (~105 palabras de media) |
 
 **Convención de mensajes**: [Conventional Commits](https://www.conventionalcommits.org/es/).
-Los tipos empleados son `feat` (31), `test` (25), `fix` (21), `docs` (9), `chore` (4),
+Los tipos empleados son `feat` (31), `test` (25), `fix` (21), `docs` (15), `chore` (4),
 `refactor` (2) y `build` (1). Los **ámbitos son las capas de la arquitectura** —`domain`,
 `application`, `adapters`, `platform`— más `scripts`, `web` y `readme`, de modo que
 `git log --oneline --grep "^feat(domain)"` responde «qué se añadió al dominio» sin abrir
@@ -1247,10 +1247,10 @@ afirmación verificable con `git log --reverse`, no una declaración de intencio
 juntos, y cada commit compila y pasa la suite **por sí solo**. Un commit que sólo funciona
 acompañado del siguiente no es una unidad revisable, es un fragmento.
 
-Comprobado recorriendo los **doce commits más recientes** con `go build ./...` y
-`go test -short ./...` en cada punto del historial: los doce pasan de forma aislada. La
-verificación se acota a esa ventana porque recorrer los noventa y tres tarda más de lo que
-aporta; el criterio, en cambio, se aplicó desde el primero.
+Comprobado recorriendo los **doce commits más recientes que tocan código** con
+`go build ./...` y `go test -short ./...` en cada punto del historial: los doce pasan de
+forma aislada. La verificación se acota a esa ventana porque recorrer los noventa y nueve
+tarda más de lo que aporta; el criterio, en cambio, se aplicó desde el primero.
 
 ### Por qué lineal sobre `main` aquí
 
