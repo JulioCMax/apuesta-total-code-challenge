@@ -70,6 +70,48 @@ func (r *UserRepository) PutUser(ctx context.Context, u account.User) error {
 	return nil
 }
 
+// SeedUser writes a demo profile identified by its EMAIL rather than by
+// the id the caller happens to have generated, and is the only entry point
+// cmd/seed should use.
+//
+// The distinction is not academic. A demo account's identity, for seeding
+// purposes, is its email: that is what the seed list is keyed by and what
+// a re-run means to re-seed. Its ULID is an internal detail minted on the
+// spot. Writing straight through PutUserIfAbsent with a fresh ULID makes
+// the attribute_not_exists(PK) condition meaningless — the key never
+// existed, so the guard always passes — and every boot adds another
+// profile for the same email. Login resolves through the email index and
+// then returns whichever duplicate the index yields, so balances appear to
+// change at random.
+//
+// So the existing profile is looked up first:
+//
+//   - absent: insert, still conditionally, so two seeders racing at boot
+//     cannot both create it.
+//   - present and reset is false: report ErrUserAlreadyExists and touch
+//     nothing, which is what protects a played-with balance.
+//   - present and reset is true: adopt the stored id and overwrite that
+//     exact item, so SEED_RESET restores the balance instead of burying
+//     the spent profile under a new one.
+func (r *UserRepository) SeedUser(ctx context.Context, u account.User, reset bool) error {
+	existing, err := r.FindByEmail(ctx, u.Email)
+	switch {
+	case err == nil:
+		if !reset {
+			return ErrUserAlreadyExists
+		}
+		u.ID = existing.ID
+		return r.PutUser(ctx, u)
+	case errors.Is(err, account.ErrInvalidCredentials):
+		// FindByEmail deliberately reports an unknown email with the same
+		// error a wrong password produces, so a caller can never learn
+		// whether an address exists. Here it simply means "not seeded yet".
+		return r.PutUserIfAbsent(ctx, u)
+	default:
+		return err
+	}
+}
+
 // FindByEmail queries the EmailIndex GSI. The GSI's projection is
 // deliberately narrow — INCLUDE [userId, passwordHash, balance]
 // (design.md) — because that is exactly what application/auth.Login

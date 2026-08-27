@@ -7,6 +7,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"os"
 	"time"
@@ -107,12 +108,13 @@ func seedOne(ctx context.Context, users *dynamo.UserRepository, passwords *secur
 		return err
 	}
 
-	if cfg.SeedReset {
-		return users.PutUser(ctx, user)
-	}
-
-	if err := users.PutUserIfAbsent(ctx, user); err != nil {
-		if err == dynamo.ErrUserAlreadyExists {
+	// The id above is minted fresh on every run, so it must never be what
+	// decides whether this account already exists — SeedUser resolves the
+	// profile by email and reuses its stored id. Writing directly through
+	// PutUserIfAbsent here would test a partition key that had never
+	// existed, pass every time, and add a duplicate profile on each boot.
+	if err := users.SeedUser(ctx, user, cfg.SeedReset); err != nil {
+		if errors.Is(err, dynamo.ErrUserAlreadyExists) {
 			slog.Info("seed: user already exists, left untouched", "email", du.email)
 			return nil
 		}

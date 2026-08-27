@@ -139,3 +139,87 @@ func TestCreateTable_IsIdempotent(t *testing.T) {
 
 	require.NoError(t, err)
 }
+
+// TestSeedUser_IsIdempotentAcrossRuns proves re-seeding the same demo
+// account does not create a second profile for it.
+//
+// This is the regression guard for a real defect: seeding minted a fresh
+// ULID on every run, so PutUserIfAbsent's attribute_not_exists(PK)
+// condition was evaluated against a partition key that had never existed
+// and therefore always passed. Every boot and every deployment quietly
+// added another profile for the same email, and login — which resolves
+// through the email index — then returned whichever duplicate the index
+// happened to yield.
+func TestSeedUser_IsIdempotentAcrossRuns(t *testing.T) {
+	client, table := requireDynamoLocal(t)
+	repo := dynamo.NewUserRepository(client, table)
+	ctx := context.Background()
+	email := "idempotent@apuestatotal.com"
+
+	first := buildUser(t, "seed-id-first", email, 1000)
+	require.NoError(t, repo.SeedUser(ctx, first, false))
+
+	// A second run with a DIFFERENT generated id, exactly as a redeploy
+	// would produce.
+	second := buildUser(t, "seed-id-second", email, 250)
+	err := repo.SeedUser(ctx, second, false)
+
+	require.ErrorIs(t, err, dynamo.ErrUserAlreadyExists,
+		"a re-run must report the account as already seeded, not write another one")
+
+	got, err := repo.FindByEmail(ctx, email)
+	require.NoError(t, err)
+	require.Equal(t, "seed-id-first", got.ID, "the original profile must survive")
+	require.Equal(t, "1000.00", got.Balance.String(), "a re-run must never clobber a balance")
+}
+
+// TestSeedUser_ResetOverwritesTheSameProfile proves SEED_RESET restores
+// the initial balance by overwriting the existing profile, keeping its
+// identity, instead of adding a fresh one beside it.
+//
+// The identity assertion is the point: a reset that wrote a new id would
+// also report success and would also show the right balance on the next
+// lookup, while silently leaving the spent profile behind.
+func TestSeedUser_ResetOverwritesTheSameProfile(t *testing.T) {
+	client, table := requireDynamoLocal(t)
+	repo := dynamo.NewUserRepository(client, table)
+	ctx := context.Background()
+	email := "reset@apuestatotal.com"
+
+	original := buildUser(t, "reset-id-original", email, 1000)
+	require.NoError(t, repo.SeedUser(ctx, original, false))
+
+	// Simulate a played-with account.
+	spent := original
+	spent.Balance = mustMoneyValue(t, 680)
+	require.NoError(t, repo.PutUser(ctx, spent))
+
+	// Reset arrives with a newly generated id, as the seeder produces.
+	replacement := buildUser(t, "reset-id-brand-new", email, 1000)
+	require.NoError(t, repo.SeedUser(ctx, replacement, true))
+
+	got, err := repo.FindByEmail(ctx, email)
+	require.NoError(t, err)
+	require.Equal(t, "1000.00", got.Balance.String(), "reset must restore the initial balance")
+	require.Equal(t, "reset-id-original", got.ID,
+		"reset must overwrite the existing profile, never add a second one")
+}
+
+func buildUser(t *testing.T, id, email string, balance float64) account.User {
+	t.Helper()
+	return account.User{
+		ID:           id,
+		Email:        email,
+		PasswordHash: "bcrypt-hash-placeholder",
+		Balance:      mustMoneyValue(t, balance),
+		Currency:     "PEN",
+		CreatedAt:    time.Now().UTC(),
+	}
+}
+
+func mustMoneyValue(t *testing.T, v float64) money.Money {
+	t.Helper()
+	m, err := money.NewMoneyFromFloat(v)
+	require.NoError(t, err)
+	return m
+}
