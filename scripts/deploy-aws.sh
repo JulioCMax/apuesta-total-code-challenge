@@ -22,6 +22,15 @@
 #   4. A 7-day retention policy on the function's CloudWatch log group, so
 #      logs cannot silently accumulate cost past the 5GB Always-Free
 #      allowance.
+#   5. ONLY IF the Function URL refuses anonymous callers: an HTTP API
+#      Gateway in front of the same function. Some AWS accounts restrict
+#      Lambda Function URLs while still allowing public traffic through API
+#      Gateway — observed on a real account, where the identical function
+#      answered 403 through its Function URL and 200 through a gateway.
+#      This step is a fallback and never runs when the free path works,
+#      because API Gateway is the one component here whose free tier
+#      expires (12 months, then ~$1 per million requests). The deploy always
+#      tries the free door first and prints which one it ended up using.
 #
 # Cost target: $0/month on permanent AWS Always-Free allowances (Lambda 1M
 # requests + 400,000 GB-s, DynamoDB 25 RCU/WCU provisioned + 25GB storage,
@@ -65,6 +74,9 @@
 #                           uses for DYNAMO_TABLE)
 #   --role-name NAME       IAM execution role name
 #                           (default: apuesta-total-lambda-role)
+#   --http-api-name NAME   Name of the HTTP API Gateway created ONLY as a
+#                           fallback, when the account restricts Lambda
+#                           Function URLs (default: <function-name>-http)
 #   --region REGION        AWS region (default: the AWS CLI's configured
 #                           default region, or us-east-1)
 #   --memory MB            Lambda memory size in MB (default: 512)
@@ -94,6 +106,15 @@ LAMBDA_TIMEOUT="${LAMBDA_TIMEOUT:-10}"
 LOG_RETENTION_DAYS=7
 JWT_SECRET_CACHE_FILE="$REPO_ROOT/.deploy/jwt-secret"
 
+# Resolved in main(), after parse_args, because the default is derived from
+# FUNCTION_NAME and that is overridable on the command line.
+HTTP_API_NAME="${HTTP_API_NAME:-}"
+# Set only when the deploy actually falls back to an API Gateway; the
+# summary and the teardown both key off "is this empty".
+HTTP_API_ID=""
+PUBLIC_URL=""
+PUBLIC_KIND=""
+
 usage() {
   # Prints this script's own header comment (everything between the
   # shebang and the first blank line after "set -euo pipefail") as the
@@ -108,6 +129,7 @@ parse_args() {
       --function-name) FUNCTION_NAME="$2"; shift 2 ;;
       --table-name)    TABLE_NAME="$2"; shift 2 ;;
       --role-name)     ROLE_NAME="$2"; shift 2 ;;
+      --http-api-name) HTTP_API_NAME="$2"; shift 2 ;;
       --region)        REGION="$2"; shift 2 ;;
       --memory)        MEMORY_SIZE="$2"; shift 2 ;;
       --timeout)       LAMBDA_TIMEOUT="$2"; shift 2 ;;
@@ -427,24 +449,114 @@ ensure_function_url() {
   FUNCTION_URL="$url"
 }
 
-wait_for_health() {
-  log "Waiting for $FUNCTION_URL health to come up (cold start)..."
-  local attempt=1 max=20 code
+# ensure_http_api puts an HTTP API Gateway in front of the function.
+#
+# This is a FALLBACK, never the first choice, and the reason is cost. A
+# Lambda Function URL is free forever; API Gateway's free tier lasts twelve
+# months and then bills ~$1 per million requests. Creating one
+# unconditionally would quietly retire this project's "$0 on permanent
+# free tiers" property (ADR-0004) for every deployer, including the ones
+# whose Function URL works fine.
+#
+# It exists because some AWS accounts have Function URLs restricted while
+# public traffic through API Gateway is allowed — verified on a real
+# account, where the identical function answered 403 through its Function
+# URL and 200 through this gateway. Rather than leave that deployer stuck
+# at a 403 with a textbook-correct resource policy, the deploy falls back
+# and says so.
+#
+# The quick-create form (--target) builds the integration, the $default
+# proxy route and an auto-deploying $default stage in one call. HTTP APIs
+# default to payload format 2.0, which is exactly what the function's
+# ginadapter.NewV2 already parses, so nothing in the application changes.
+ensure_http_api() {
+  local api_id output
+  api_id="$(aws apigatewayv2 get-apis --region "$REGION" \
+    --query "Items[?Name=='$HTTP_API_NAME'].ApiId | [0]" --output text 2>/dev/null || true)"
+
+  if [ -n "$api_id" ] && [ "$api_id" != "None" ]; then
+    log "HTTP API '$HTTP_API_NAME' already exists ($api_id); reusing it."
+  else
+    log "Creating HTTP API '$HTTP_API_NAME' with a proxy integration to the function..."
+    api_id="$(aws apigatewayv2 create-api \
+      --name "$HTTP_API_NAME" \
+      --protocol-type HTTP \
+      --target "arn:aws:lambda:$REGION:$ACCOUNT_ID:function:$FUNCTION_NAME" \
+      --region "$REGION" \
+      --query 'ApiId' --output text)"
+  fi
+
+  # The statement is REPLACED, not merely created-if-absent.
+  #
+  # Treating an existing statement id as "already correct" is the trap
+  # here: the id survives, but its source ARN still names whatever API
+  # existed last time. Point it at a rebuilt gateway and the grant silently
+  # authorises a deleted API, so the live one cannot invoke the function
+  # and every request comes back 500 — with a resource policy that looks
+  # present and healthy. Removing first makes the grant always describe the
+  # gateway that actually exists.
+  if ! output=$(aws lambda remove-permission \
+      --function-name "$FUNCTION_NAME" \
+      --statement-id apigw-invoke \
+      --region "$REGION" 2>&1); then
+    [[ "$output" == *"ResourceNotFoundException"* ]] || err "aws lambda remove-permission (apigateway) failed: $output"
+  fi
+
+  # The source ARN is scoped to this API only: the gateway may invoke the
+  # function, nothing else may.
+  MSYS_NO_PATHCONV=1 aws lambda add-permission \
+    --function-name "$FUNCTION_NAME" \
+    --statement-id apigw-invoke \
+    --action lambda:InvokeFunction \
+    --principal apigateway.amazonaws.com \
+    --source-arn "arn:aws:execute-api:$REGION:$ACCOUNT_ID:$api_id/*/*" \
+    --region "$REGION" >/dev/null
+
+  HTTP_API_ID="$api_id"
+}
+
+# probe_health polls base/health until it answers 200. Returns non-zero
+# instead of aborting, so the caller can decide whether a failure is fatal
+# or just means "try the other endpoint".
+probe_health() {
+  local base="$1" label="$2" max="$3" attempt=1 code
+  log "Waiting for the $label to answer /health (cold start)..."
   while [ "$attempt" -le "$max" ]; do
-    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "${FUNCTION_URL%/}/health" 2>/dev/null || true)"
+    code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "${base%/}/health" 2>/dev/null || true)"
     if [ "$code" = "200" ]; then
-      log "Function URL is responding (attempt $attempt)."
+      log "  $label is responding (attempt $attempt)."
       return 0
     fi
     sleep 3
     attempt=$((attempt + 1))
   done
-  err "Function URL never answered 200 on /health after $((max * 3))s (last status: '${code:-none}'): $FUNCTION_URL"
+  log "  $label never answered 200 after $((max * 3))s (last status: '${code:-none}')."
+  return 1
+}
+
+# ensure_public_endpoint publishes the function and leaves PUBLIC_URL
+# pointing at whichever door actually works, preferring the free one.
+ensure_public_endpoint() {
+  ensure_function_url
+  if probe_health "$FUNCTION_URL" "Function URL" 10; then
+    PUBLIC_URL="${FUNCTION_URL%/}"
+    PUBLIC_KIND="Lambda Function URL (free tier, permanent)"
+    return
+  fi
+
+  log "The Function URL is reachable but refusing anonymous callers, which some"
+  log "AWS accounts enforce regardless of the function's resource policy."
+  log "Falling back to an HTTP API Gateway — see ADR-0004 for the cost this adds."
+  ensure_http_api
+  PUBLIC_URL="https://${HTTP_API_ID}.execute-api.${REGION}.amazonaws.com"
+  PUBLIC_KIND="HTTP API Gateway (billed after its 12-month free tier)"
+  probe_health "$PUBLIC_URL" "API Gateway" 20 \
+    || err "Neither the Function URL nor the API Gateway answered 200 on /health. The function itself may still be fine: try 'aws lambda invoke --function-name $FUNCTION_NAME out.json' to check it in isolation."
 }
 
 run_smoke() {
   log "Running scripts/smoke.sh against the live deployment..."
-  "$REPO_ROOT/scripts/smoke.sh" "${FUNCTION_URL%/}"
+  "$REPO_ROOT/scripts/smoke.sh" "$PUBLIC_URL"
 }
 
 print_summary() {
@@ -453,13 +565,16 @@ print_summary() {
 ========================================================================
  Deployment summary
 ========================================================================
- Function URL  : $FUNCTION_URL
+ Public URL    : $PUBLIC_URL
+ Served by     : $PUBLIC_KIND
+ Web client    : $PUBLIC_URL/app
+ API docs      : $PUBLIC_URL/docs
  Function name : $FUNCTION_NAME
  Table name    : $TABLE_NAME
  Role name     : $ROLE_NAME
  Region        : $REGION
  Log group     : /aws/lambda/$FUNCTION_NAME (retention: ${LOG_RETENTION_DAYS}d)
-
+$(if [ -n "${HTTP_API_ID:-}" ]; then printf ' HTTP API id   : %s (%s)\n' "$HTTP_API_ID" "$HTTP_API_NAME"; fi)
  Tear everything down with:
    scripts/destroy-aws.sh --yes --function-name "$FUNCTION_NAME" --table-name "$TABLE_NAME" --role-name "$ROLE_NAME" --region "$REGION"
 
@@ -467,12 +582,22 @@ print_summary() {
  400k GB-s, DynamoDB 25 RCU/WCU provisioned, CloudWatch Logs 5GB, 7-day
  retention). Hard cap: ~\$5/month even outside the free tier at this
  workload's scale. No NAT gateway, VPC, or ElastiCache was created.
+$(if [ -n "${HTTP_API_ID:-}" ]; then cat <<'NOTE'
+
+ NOTE: this account restricts Lambda Function URLs, so the deploy fell
+ back to an HTTP API Gateway. That is the one component here whose free
+ tier expires (12 months, then ~$1 per million requests). Once AWS
+ enables Function URLs on the account, re-run this script and delete the
+ gateway: the free path is preferred and is tried first every time.
+NOTE
+fi)
 ========================================================================
 EOF
 }
 
 main() {
   parse_args "$@"
+  HTTP_API_NAME="${HTTP_API_NAME:-${FUNCTION_NAME}-http}"
   preflight
 
   WORKDIR="$(mktemp -d)"
@@ -485,8 +610,7 @@ main() {
   ensure_iam_role
   deploy_lambda_function
   ensure_log_retention
-  ensure_function_url
-  wait_for_health
+  ensure_public_endpoint
   run_smoke
   print_summary
 }

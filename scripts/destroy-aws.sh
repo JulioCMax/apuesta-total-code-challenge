@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Tear down everything scripts/deploy-aws.sh created, so a demo deployment
-# leaves zero cost behind: the Function URL, the Lambda function, its
+# leaves zero cost behind: the HTTP API Gateway (when the deploy fell back
+# to one), the Function URL, the Lambda function, its
 # CloudWatch log group, the IAM execution role (managed policy detached +
 # inline policy removed, then the role itself), and finally the DynamoDB
 # table (which permanently deletes every seeded user and placed bet).
@@ -20,6 +21,8 @@
 #                           (default: apuesta-total-lambda-role)
 #   --region REGION        AWS region (default: the AWS CLI's configured
 #                           default region, or us-east-1)
+#   --http-api-name NAME   HTTP API Gateway name
+#                           (default: <function-name>-http)
 #   --yes                  Required. Confirms the destructive operation.
 #   -h, --help              Print this help and exit
 #
@@ -36,6 +39,9 @@ source "$SCRIPT_DIR/lib/common.sh"
 FUNCTION_NAME="${FUNCTION_NAME:-apuesta-total-api}"
 TABLE_NAME="${TABLE_NAME:-apuesta-total}"
 ROLE_NAME="${ROLE_NAME:-apuesta-total-lambda-role}"
+# Resolved in main(), after parse_args: the default derives from
+# FUNCTION_NAME, which is overridable on the command line.
+HTTP_API_NAME="${HTTP_API_NAME:-}"
 REGION="${REGION:-}"
 CONFIRMED=false
 
@@ -49,6 +55,7 @@ parse_args() {
       --function-name) FUNCTION_NAME="$2"; shift 2 ;;
       --table-name)    TABLE_NAME="$2"; shift 2 ;;
       --role-name)     ROLE_NAME="$2"; shift 2 ;;
+      --http-api-name) HTTP_API_NAME="$2"; shift 2 ;;
       --region)        REGION="$2"; shift 2 ;;
       --yes)           CONFIRMED=true; shift ;;
       -h|--help)       usage; exit 0 ;;
@@ -68,6 +75,7 @@ preflight() {
 confirm_or_exit() {
   cat <<EOF
 This will PERMANENTLY delete, in region $REGION:
+  - HTTP API Gateway      : $HTTP_API_NAME (only exists if the deploy fell back to one)
   - Lambda function       : $FUNCTION_NAME (and its Function URL)
   - CloudWatch log group  : /aws/lambda/$FUNCTION_NAME
   - IAM role              : $ROLE_NAME (managed + inline policies removed first)
@@ -85,6 +93,31 @@ delete_function_url() {
   if ! output=$(aws lambda delete-function-url-config --function-name "$FUNCTION_NAME" --region "$REGION" 2>&1); then
     [[ "$output" == *"ResourceNotFoundException"* ]] || err "aws lambda delete-function-url-config failed: $output"
     log "  no Function URL existed."
+  fi
+}
+
+# delete_http_api removes the API Gateway the deploy creates only when the
+# account restricts Lambda Function URLs. It is deleted BEFORE the function
+# so no window exists where a live public endpoint points at a function
+# that is being torn down.
+#
+# This one matters more than the rest: the gateway is the only resource
+# here whose free tier expires, so a teardown that misses it is a teardown
+# that leaves a bill behind. Absence is the normal case and never an error.
+delete_http_api() {
+  local api_id output
+  log "Looking for HTTP API '$HTTP_API_NAME' (if any)..."
+  api_id="$(aws apigatewayv2 get-apis --region "$REGION" \
+    --query "Items[?Name=='$HTTP_API_NAME'].ApiId | [0]" --output text 2>/dev/null || true)"
+
+  if [ -z "$api_id" ] || [ "$api_id" = "None" ]; then
+    log "  no such HTTP API."
+    return 0
+  fi
+
+  log "Deleting HTTP API '$HTTP_API_NAME' ($api_id)..."
+  if ! output=$(aws apigatewayv2 delete-api --api-id "$api_id" --region "$REGION" 2>&1); then
+    [[ "$output" == *"NotFoundException"* ]] || err "aws apigatewayv2 delete-api failed: $output"
   fi
 }
 
@@ -147,6 +180,7 @@ print_summary() {
 
 ========================================================================
  Teardown complete for region $REGION:
+   - HTTP API Gateway               : $HTTP_API_NAME
    - Function URL / Lambda function : $FUNCTION_NAME
    - Log group                      : /aws/lambda/$FUNCTION_NAME
    - IAM role                       : $ROLE_NAME
@@ -158,9 +192,11 @@ EOF
 
 main() {
   parse_args "$@"
+  HTTP_API_NAME="${HTTP_API_NAME:-${FUNCTION_NAME}-http}"
   preflight
   confirm_or_exit
 
+  delete_http_api
   delete_function_url
   delete_lambda_function
   delete_log_group

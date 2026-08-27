@@ -821,6 +821,7 @@ ejecuciones posteriores actualiza en lugar de recrear.
 | `--function-name` | `FUNCTION_NAME` | `apuesta-total-api` |
 | `--table-name` | `TABLE_NAME` | `apuesta-total` |
 | `--role-name` | `ROLE_NAME` | `apuesta-total-lambda-role` |
+| `--http-api-name` | `HTTP_API_NAME` | `<function-name>-http` (sólo se usa en la reserva descrita abajo) |
 | `--region` | `REGION` | La región configurada en la CLI de AWS, o `us-east-1` |
 | `--memory` | `MEMORY_SIZE` | `512` (MB) |
 | `--timeout` | `LAMBDA_TIMEOUT` | `10` (segundos) |
@@ -844,12 +845,42 @@ ejecuciones posteriores actualiza en lugar de recrear.
    cruzada desde `./cmd/api`) con su **Function URL** pública (`--auth-type NONE`).
 4. **Retención de 7 días** en el grupo de logs de CloudWatch, para que los registros no
    se acumulen en silencio hasta rebasar la asignación gratuita.
+5. **Sólo si la Function URL rechaza a los llamantes anónimos**: una **HTTP API Gateway**
+   delante de la misma función. Es una reserva, no el camino principal, y nunca se crea
+   cuando la vía gratuita funciona. Ver [«Cuando la cuenta restringe las Function
+   URLs»](#cuando-la-cuenta-restringe-las-function-urls).
 
 Además ejecuta `cmd/seed` —el mismo binario ya probado del entorno local— contra la
-tabla real, espera a que `GET /health` responda `200` en la URL desplegada (absorbiendo
-el arranque en frío), valida el despliegue ejecutando `scripts/smoke.sh` contra esa misma
-URL y, por último, imprime un resumen con la URL, los nombres de los recursos creados y
-el comando exacto para eliminarlos.
+tabla real, espera a que `GET /health` responda `200` en la URL pública (absorbiendo el
+arranque en frío), valida el despliegue ejecutando `scripts/smoke.sh` contra esa misma
+URL y, por último, imprime un resumen con la URL, **cuál de las dos puertas acabó
+sirviéndola**, los nombres de los recursos creados y el comando exacto para eliminarlos.
+
+### Cuando la cuenta restringe las Function URLs
+
+Algunas cuentas de AWS tienen las **Lambda Function URLs restringidas** aunque sí
+permitan tráfico público a través de API Gateway. Comprobado en una cuenta real: la
+misma función respondía `403` por su Function URL y `200` por una HTTP API Gateway, con
+una política de recurso correcta (`Principal: "*"`, `lambda:InvokeFunctionUrl`, condición
+`FunctionUrlAuthType=NONE`), sin ningún SCP ni RCP en la organización, y devolviendo
+`200` por invocación directa (`aws lambda invoke`). La señal que lo delata es
+`ConcurrentExecutions: 10` en `aws lambda get-account-settings`, frente al valor por
+defecto de `1000`: la cuenta está en estado restringido.
+
+Por eso el despliegue **intenta primero la Function URL** y sólo crea la API Gateway si
+aquella no responde `200`:
+
+- Una cuenta **sin** restricción nunca crea el recurso de pago y conserva los 0 USD
+  permanentes.
+- Una cuenta **con** restricción obtiene un despliegue que funciona, en lugar de un `403`
+  inexplicable con una política impecable.
+
+La API Gateway es el **único** componente de esta arquitectura cuya capa gratuita caduca
+(12 meses, después ≈ 1 USD por millón de peticiones). Cuando AWS habilite las Function
+URLs en la cuenta, basta con reejecutar el despliegue y eliminar la pasarela: la vía
+gratuita se prueba siempre primero. El razonamiento completo, con lo que se cede al no
+usar API Gateway como camino principal, está en
+[ADR-0004](docs/adr/0004-despliegue-lambda-function-url.md).
 
 ### Eliminar todo lo creado
 
@@ -914,9 +945,10 @@ curl -s -o /dev/null -w 'tiempo total: %{time_total}s\n' https://<function-url>/
 curl -s -o /dev/null -w 'tiempo total: %{time_total}s\n' https://<function-url>/health
 ```
 
-> **Cifra medida**: pendiente de registrar. Esta entrega no incluye un despliegue
-> ejecutado con credenciales reales; el valor se anota aquí tras la primera ejecución de
-> `scripts/deploy-aws.sh` (véase el [checklist de entrega](#13-checklist-de-entrega)).
+> **Cifra medida** sobre el despliegue real (`us-east-1`, 512 MB, arm64, servido a
+> través de la HTTP API Gateway): **0,95 s** en la primera solicitud tras forzar un
+> arranque en frío y **0,36 s** en la siguiente, ya caliente. La diferencia —unos 600 ms—
+> es el precio de escalar a cero, y se paga una sola vez por instancia.
 
 ---
 
@@ -1149,9 +1181,9 @@ git log --oneline --reverse --format='%s' | grep -E '^(test|feat)' | head -20
 - [x] Pruebas en cuatro niveles, incluida la demostración real de concurrencia
 - [x] `scripts/deploy-aws.sh` idempotente, con política de IAM de privilegio mínimo, y
       `scripts/destroy-aws.sh` para eliminar todo sin dejar coste
-- [ ] **Ejecutar `scripts/deploy-aws.sh`** con credenciales propias de AWS y confirmar
-      que la prueba de humo pasa contra la URL desplegada (el propio script la ejecuta)
-- [ ] **Anotar la cifra de arranque en frío medida** en la
+- [x] **Ejecutado `scripts/deploy-aws.sh`** contra una cuenta real: la prueba de humo
+      pasa contra la URL pública (login, cálculo, colocación y saldo)
+- [x] **Cifra de arranque en frío medida y anotada** en la
       [sección 8](#8-despliegue-en-aws-y-coste)
 - [ ] **Enviar el enlace del repositorio a `jimmy.sandoval@apuestatotal.com`**
 

@@ -26,6 +26,53 @@ empresa, basada en EKS.
 | Lambda como imagen de contenedor | 0 USD de cómputo | Descartada: exige ECR, cuya capa gratuita de repositorio privado dura solo 12 meses, no de forma permanente |
 | **Lambda ZIP nativo (`provided.al2023`, arm64) + Function URL** | **0 USD** dentro de la capa siempre gratuita | Adoptada |
 
+### Cómo se expone la función a internet
+
+La tabla anterior compara destinos de cómputo. Falta la pregunta que hace todo el mundo
+al ver una Lambda: **¿no necesita una API Gateway delante?**
+
+Hasta abril de 2022, sí: hacía falta API Gateway o un balanceador. Desde entonces existen
+las **Function URLs**, un extremo HTTPS propio de la función.
+
+| Alternativa | Coste | Valoración |
+|---|---|---|
+| **API Gateway (HTTP API)** | 1 USD por millón de peticiones; capa gratuita de **12 meses**, no permanente | No adoptada como camino principal: es el único componente de esta arquitectura cuya capa gratuita caduca, lo que rompería la propiedad de 0 USD permanentes. Se conserva como **reserva** (ver más abajo) |
+| API Gateway (REST API) | 3.50 USD por millón | Descartada: más cara y no aporta nada que la HTTP API no dé aquí |
+| Balanceador de aplicación (ALB) | ≈ 16 USD/mes solo por existir | Descartada: triplica el tope de presupuesto |
+| **Function URL** | **0 USD**, permanente | Adoptada |
+
+Además del coste, la Function URL evita **duplicar la tabla de rutas**. El router de Gin
+ya la tiene; con API Gateway habría que declarar un `{proxy+}` que sólo reenvía —y
+entonces no aporta nada— o repetir cada ruta en la infraestructura y convivir con el
+riesgo de que el código y el despliegue se desincronicen.
+
+**Lo que se cede al no usar API Gateway**, y conviene tenerlo escrito:
+
+- **WAF**: no se puede asociar a una Function URL; API Gateway y ALB sí lo admiten.
+- **Dominio propio**: no es nativo; requeriría CloudFront por delante.
+- **Límite de tasa, planes de uso y claves de API**: los ofrece API Gateway. Aquí el
+  límite de tasa lo aplica la propia aplicación (`middleware.RateLimit`), con la
+  limitación por instancia que el README documenta.
+- **Autorizadores gestionados** (Cognito, autorizador Lambda): sólo hay `NONE` o
+  `AWS_IAM`. La autorización la resuelve el JWT de la aplicación.
+- **Validación y transformación de peticiones**: no existen; el binario valida.
+
+### Reserva: API Gateway cuando la cuenta restringe las Function URLs
+
+Verificado en una cuenta real: **la misma función respondía 403 a través de su Function
+URL y 200 a través de una HTTP API Gateway**, con una política de recurso correcta
+(`Principal: "*"`, `lambda:InvokeFunctionUrl`, condición `FunctionUrlAuthType=NONE`),
+sin ningún SCP ni RCP en la organización, y con la función devolviendo 200 por invocación
+directa. La señal que lo delata es `ConcurrentExecutions: 10` en
+`aws lambda get-account-settings`, frente al valor por defecto de 1000: la cuenta está en
+estado restringido.
+
+Por eso `scripts/deploy-aws.sh` **intenta primero la Function URL** y sólo crea la API
+Gateway si aquella no responde 200. Una cuenta sin restricción nunca crea el recurso de
+pago y conserva los 0 USD permanentes; una cuenta restringida obtiene un despliegue que
+funciona en lugar de un 403 inexplicable. El despliegue informa cuál de las dos puertas
+acabó usando, y `scripts/destroy-aws.sh` elimina la API Gateway antes que la función.
+
 ## Decisión
 
 Se adopta **AWS Lambda con paquete ZIP nativo sobre `provided.al2023`, arquitectura
