@@ -677,6 +677,7 @@ evaluadas, decisión y consecuencias.
 | [0008](docs/adr/0008-semilla-de-fase-y-grupo.md) | Semilla de fase y grupo | Dato verificado del sorteo oficial, con camino de reserva que nunca falla |
 | [0009](docs/adr/0009-publicacion-de-eventos-diferida.md) | Publicación de eventos diferida | EventBridge/SNS documentado como mejora futura, no implementado |
 | [0010](docs/adr/0010-cliente-web-y-swagger-ui-embebidos.md) | Cliente web y Swagger UI embebidos | Dependencias vendorizadas y servidas por el binario: sin CDN y sin etapa de compilación |
+| [0011](docs/adr/0011-rol-oidc-de-github-actions.md) | Rol OIDC de GitHub Actions para el despliegue | Credenciales federadas de vida corta en lugar de una clave de IAM de larga vida en un repositorio público |
 
 ---
 
@@ -865,6 +866,32 @@ ejecuciones posteriores actualiza en lugar de recrear.
 
 **Requisitos**: AWS CLI v2 con credenciales resolubles, `go`, `curl` y `zip` (en Windows,
 `powershell.exe` sirve como alternativa para generar el archivo).
+
+### Despliegue automatizado desde GitHub Actions
+
+`.github/workflows/deploy.yml` ejecuta exactamente este mismo comando
+(`scripts/deploy-aws.sh`, sin ninguna modificación) desde un flujo de trabajo disparado
+únicamente de forma manual (`workflow_dispatch`), nunca por `push` ni por `pull_request`.
+Las credenciales de AWS se obtienen por **asunción de rol federada vía OIDC de GitHub**
+(`aws-actions/configure-aws-credentials`): el repositorio no guarda ninguna clave de
+acceso de larga vida. El razonamiento completo —por qué OIDC en lugar de una clave de
+IAM, y por qué este rol de despliegue es un límite de confianza deliberadamente más
+amplio que el rol de ejecución de la Lambda (ADR-0004)— está en
+[ADR-0011](docs/adr/0011-rol-oidc-de-github-actions.md).
+
+**Puesta en marcha, a cargo de quien administra el repositorio (fuera del alcance de
+este proyecto y de cualquier automatización)**:
+
+1. Crear en la cuenta de AWS de destino el rol de IAM cuya política de confianza y
+   permisos se detallan en ADR-0011, con el proveedor OIDC
+   `token.actions.githubusercontent.com` ya configurado en la cuenta.
+2. Definir en el repositorio de GitHub (*Settings → Secrets and variables → Actions →
+   Variables*) las variables `AWS_DEPLOY_ROLE_ARN` (el ARN de ese rol) y `AWS_REGION`.
+3. Ejecutar manualmente el flujo de trabajo *Deploy* desde la pestaña *Actions*.
+
+Ningún comando de este proyecto crea ese rol ni esas variables: son un requisito previo
+que se documenta, nunca se automatiza, exactamente igual que el resto de este comando de
+despliegue asume credenciales ya resueltas.
 
 ### Qué crea
 
@@ -1133,6 +1160,8 @@ presente en la fuente. La respuesta refleja el dato real.
 ---
 
 ## 12. Pruebas
+
+[![CI](https://github.com/JulioCMax/apuesta-total-code-challenge/actions/workflows/ci.yml/badge.svg)](https://github.com/JulioCMax/apuesta-total-code-challenge/actions/workflows/ci.yml)
 
 **178 funciones de prueba en 42 archivos**, en cuatro niveles.
 

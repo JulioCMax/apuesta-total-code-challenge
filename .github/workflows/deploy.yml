@@ -1,0 +1,45 @@
+name: Deploy
+
+# workflow_dispatch ONLY (design.md D30, ADR-0011): this is the one workflow
+# in the repository allowed to hold cloud-credential authority, and it must
+# never be reachable from push or pull_request — a human always triggers it.
+on:
+  workflow_dispatch: {}
+
+# id-token: write is what lets aws-actions/configure-aws-credentials request
+# a short-lived OIDC token from GitHub's own token.actions.githubusercontent.com
+# issuer and exchange it for temporary AWS credentials via sts:AssumeRoleWithWebIdentity.
+# No AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY secret exists anywhere in this
+# repository — see ADR-0011 for why a long-lived key was rejected.
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # `environment: production` gives this run GitHub's environment-protection
+    # gate (e.g. required reviewers), so a reviewer sees an explicit approval
+    # step before any AWS credential is issued.
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Configure AWS credentials (GitHub OIDC role assumption)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      # scripts/deploy-aws.sh is invoked UNMODIFIED. It already resolves
+      # credentials generically through `aws sts get-caller-identity`
+      # (preflight_aws_credentials in scripts/lib/common.sh), so it works
+      # unchanged with whatever the AWS CLI's default credential chain
+      # exposes — including the OIDC-exported environment the previous step
+      # just set up. This script is never executed by SDD/CI on its own
+      # initiative outside this human-triggered workflow (see its own header
+      # comment).
+      - name: Deploy
+        run: bash scripts/deploy-aws.sh
