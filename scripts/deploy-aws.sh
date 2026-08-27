@@ -236,7 +236,7 @@ ensure_iam_role() {
 EOF
     aws iam create-role \
       --role-name "$ROLE_NAME" \
-      --assume-role-policy-document "file://$WORKDIR/trust-policy.json" \
+      --assume-role-policy-document "$(aws_file_uri "$WORKDIR/trust-policy.json")" \
       --description "Execution role for the $FUNCTION_NAME Lambda (managed by scripts/deploy-aws.sh)" \
       >/dev/null
     NEW_ROLE=true
@@ -275,7 +275,7 @@ EOF
   aws iam put-role-policy \
     --role-name "$ROLE_NAME" \
     --policy-name "${ROLE_NAME}-dynamodb" \
-    --policy-document "file://$WORKDIR/table-policy.json" >/dev/null
+    --policy-document "$(aws_file_uri "$WORKDIR/table-policy.json")" >/dev/null
 }
 
 # build_env_json writes the Lambda function's environment variables.
@@ -317,10 +317,10 @@ create_function_with_retry() {
         --architectures arm64 \
         --handler bootstrap \
         --role "$ROLE_ARN" \
-        --zip-file "fileb://$WORKDIR/function.zip" \
+        --zip-file "$(aws_fileb_uri "$WORKDIR/function.zip")" \
         --memory-size "$MEMORY_SIZE" \
         --timeout "$LAMBDA_TIMEOUT" \
-        --environment "file://$WORKDIR/env.json" \
+        --environment "$(aws_file_uri "$WORKDIR/env.json")" \
         --region "$REGION" 2>&1); then
       return 0
     fi
@@ -337,7 +337,7 @@ create_function_with_retry() {
 update_function_code_and_config() {
   aws lambda update-function-code \
     --function-name "$FUNCTION_NAME" \
-    --zip-file "fileb://$WORKDIR/function.zip" \
+    --zip-file "$(aws_fileb_uri "$WORKDIR/function.zip")" \
     --region "$REGION" >/dev/null
   aws lambda wait function-updated --function-name "$FUNCTION_NAME" --region "$REGION"
 
@@ -347,7 +347,7 @@ update_function_code_and_config() {
     --runtime provided.al2023 \
     --memory-size "$MEMORY_SIZE" \
     --timeout "$LAMBDA_TIMEOUT" \
-    --environment "file://$WORKDIR/env.json" \
+    --environment "$(aws_file_uri "$WORKDIR/env.json")" \
     --region "$REGION" >/dev/null
   aws lambda wait function-updated --function-name "$FUNCTION_NAME" --region "$REGION"
 }
@@ -373,10 +373,22 @@ deploy_lambda_function() {
 ensure_log_retention() {
   local log_group="/aws/lambda/$FUNCTION_NAME" output
   log "Ensuring log group '$log_group' exists with a ${LOG_RETENTION_DAYS}-day retention..."
-  if ! output=$(aws logs create-log-group --log-group-name "$log_group" --region "$REGION" 2>&1); then
+
+  # MSYS_NO_PATHCONV is required, not defensive. A CloudWatch log group name
+  # starts with a slash, and Git Bash treats any leading-slash argument as a
+  # POSIX path to translate before handing it to a native Windows binary:
+  # "/aws/lambda/apuesta-total-api" reaches the AWS CLI as
+  # "C:/Program Files/Git/aws/lambda/apuesta-total-api". The name then fails
+  # CloudWatch's own character validation, and the error blames the pattern
+  # rather than the shell, which sends you looking in the wrong place.
+  #
+  # Scoped to these two calls on purpose: every other argument in this
+  # script is an ARN, a plain name, or a path already converted by
+  # aws_file_uri, and none of them wants path translation disabled.
+  if ! output=$(MSYS_NO_PATHCONV=1 aws logs create-log-group --log-group-name "$log_group" --region "$REGION" 2>&1); then
     [[ "$output" == *"ResourceAlreadyExistsException"* ]] || err "aws logs create-log-group failed: $output"
   fi
-  aws logs put-retention-policy \
+  MSYS_NO_PATHCONV=1 aws logs put-retention-policy \
     --log-group-name "$log_group" \
     --retention-in-days "$LOG_RETENTION_DAYS" \
     --region "$REGION" >/dev/null

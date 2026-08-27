@@ -100,7 +100,11 @@ delete_lambda_function() {
 delete_log_group() {
   local log_group="/aws/lambda/$FUNCTION_NAME" output
   log "Deleting log group '$log_group' (if any)..."
-  if ! output=$(aws logs delete-log-group --log-group-name "$log_group" --region "$REGION" 2>&1); then
+  # See ensure_log_retention in deploy-aws.sh: Git Bash rewrites a
+  # leading-slash argument into a Windows path before a native binary sees
+  # it, which would make this delete miss the real log group and leave it
+  # behind — the one thing a teardown script must never do.
+  if ! output=$(MSYS_NO_PATHCONV=1 aws logs delete-log-group --log-group-name "$log_group" --region "$REGION" 2>&1); then
     [[ "$output" == *"ResourceNotFoundException"* ]] || err "aws logs delete-log-group failed: $output"
     log "  no such log group."
   fi

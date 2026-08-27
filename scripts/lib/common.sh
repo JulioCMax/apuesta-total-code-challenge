@@ -90,6 +90,34 @@ to_win_path() {
   esac
 }
 
+# aws_uri renders a local path as one of the URIs the AWS CLI expects for a
+# path-valued parameter: `file://` for text (--assume-role-policy-document,
+# --policy-document, --environment) and `fileb://` for binary (--zip-file).
+#
+# Under Git Bash / MSYS the shell is POSIX but the AWS CLI is a NATIVE
+# WINDOWS binary, so it cannot resolve a path like /tmp/x: it looks for
+# \tmp\x on the current drive and fails with "No such file or directory".
+# The conversion is deliberately gated on the platform rather than applied
+# everywhere, because to_win_path's cygpath-less fallback would happily
+# rewrite a genuine Linux /tmp/x into "T:mp\x".
+#
+# Both schemes go through this one function on purpose: they differ by four
+# characters, which is exactly how the binary one gets missed when the text
+# one is fixed on its own.
+aws_uri() {
+  local scheme="$1" p="$2"
+  case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) printf '%s://%s\n' "$scheme" "$(to_win_path "$p")" ;;
+    *) printf '%s://%s\n' "$scheme" "$p" ;;
+  esac
+}
+
+# aws_file_uri is aws_uri for text payloads.
+aws_file_uri() { aws_uri file "$1"; }
+
+# aws_fileb_uri is aws_uri for binary payloads (the Lambda deployment zip).
+aws_fileb_uri() { aws_uri fileb "$1"; }
+
 # create_zip packages bin_path (a single file) into zip_path with the entry
 # name bin_name at the archive root — the exact shape provided.al2023
 # requires for the handler binary. Prefers the `zip` CLI; falls back to

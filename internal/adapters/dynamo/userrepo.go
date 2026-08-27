@@ -179,6 +179,11 @@ func attrString(item map[string]types.AttributeValue, key string) (string, bool)
 	return s.Value, true
 }
 
+// tableActiveMaxWait bounds how long EnsureTable waits for a freshly
+// created table to reach ACTIVE. See the waiter call for why it is minutes
+// and not seconds.
+const tableActiveMaxWait = 5 * time.Minute
+
 // EnsureTable creates the single table (10/10 provisioned, EmailIndex
 // 5/5) if it does not already exist, waits for it to become ACTIVE, and
 // enables TTL on expiresAt. Idempotent: ResourceInUseException from a
@@ -226,8 +231,21 @@ func EnsureTable(ctx context.Context, client *dynamodb.Client, tableName string)
 		return fmt.Errorf("dynamo: create table: %w", err)
 	}
 
+	// tableActiveMaxWait is generous on purpose. The SDK's TableExists
+	// waiter polls on a 20-second minimum delay, so a 30-second budget
+	// buys exactly one retry: the waiter aborts as soon as the next
+	// scheduled poll would fall outside the window. A real DynamoDB table
+	// with a secondary index routinely needs longer than that to reach
+	// ACTIVE, so the tight budget failed the very first deployment against
+	// AWS while every local run passed — dynamodb-local reports the table
+	// ACTIVE immediately, so the wait is a no-op there and the emulator can
+	// never surface this.
+	//
+	// Waiting longer costs nothing when the table is already ACTIVE (the
+	// first poll returns and the waiter exits), and the value only has to
+	// exceed the slowest realistic creation, not predict it.
 	waiter := dynamodb.NewTableExistsWaiter(client)
-	if err := waiter.Wait(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(tableName)}, 30*time.Second); err != nil {
+	if err := waiter.Wait(ctx, &dynamodb.DescribeTableInput{TableName: aws.String(tableName)}, tableActiveMaxWait); err != nil {
 		return fmt.Errorf("dynamo: wait table active: %w", err)
 	}
 
