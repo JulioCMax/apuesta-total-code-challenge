@@ -1,0 +1,105 @@
+name: CI
+
+# Runs on every push and every pull request (design.md D30: this workflow
+# must NEVER hold OIDC authority — see permissions below and the separate,
+# human-triggered deploy.yml).
+on:
+  push:
+  pull_request:
+
+# No OIDC token permission here on purpose (design.md D30): a fast,
+# always-on gate that runs on untrusted fork PRs must never carry cloud-
+# credential authority. Only deploy.yml (workflow_dispatch, human-triggered)
+# requests that permission. This workflow also intentionally uses the
+# non-privileged pull-request trigger, never its riskier target-branch-
+# context variant — that one would run fork PR code with repository
+# authority.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      DYNAMO_ENDPOINT: http://localhost:8000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # OPEN VERIFICATION ITEM from design.md — resolved during apply, not
+      # assumed. `docker inspect amazon/dynamodb-local:latest` shows:
+      #   Entrypoint: ["java"]
+      #   Cmd:        ["-jar","DynamoDBLocal.jar","-inMemory"]
+      # i.e. the published image's default CMD is missing -sharedDb, exactly
+      # the concern design.md raised. -sharedDb is mandatory: without it,
+      # dynamodb-local shards tables per credential+region pair and every
+      # integration test in this repo sees an empty namespace (see the same
+      # note on the `dynamodb` service in docker-compose.yml).
+      #
+      # Whether the declarative `services:` block can override CMD was
+      # checked from two angles and they disagree, so the declarative form
+      # is NOT used here:
+      #   - the current github-workflow.json schema (json.schemastore.org)
+      #     and the docs.github.com page for
+      #     jobs.<job_id>.services.<service_id>.command both describe a
+      #     `command:` override key for service containers;
+      #   - but `actionlint` (rhysd/actionlint, a dedicated GitHub Actions
+      #     schema/shellcheck validator, run locally against this exact
+      #     file) rejects `command:` under `services:` as an unexpected key,
+      #     listing only credentials/env/image/options/ports/volumes as
+      #     valid — and a real `workflow_dispatch`/push run to confirm
+      #     empirically is outside this apply session's authority (no push).
+      # Given that conflict and no way to confirm live, this job uses the
+      # explicit `docker run` fallback design.md pre-approved for exactly
+      # this situation, which needs no schema assumption at all and was
+      # verified locally end-to-end (container starts, logs confirm
+      # `InMemory: true` / `SharedDb: true`, and it answers HTTP after ~2-3s).
+      - name: Start dynamodb-local
+        run: |
+          docker run -d --name dynamodb-local -p 8000:8000 \
+            amazon/dynamodb-local:latest \
+            -jar DynamoDBLocal.jar -inMemory -sharedDb
+
+      # Bounded readiness poll, run from the host: the image ships no shell
+      # tooling beyond a minimal Amazon Linux base and is not meant to be
+      # `docker exec`'d into for this purpose, so polling happens over HTTP
+      # against the published port instead. Gotcha found while verifying
+      # this locally: dynamodb-local answers HTTP 400
+      # ("MissingAuthenticationToken") to ANY unauthenticated request as
+      # soon as it is actually up, so `curl -f` (which treats 4xx as
+      # failure) would never see it as ready — this loop deliberately omits
+      # -f and only checks that a response was received at all.
+      - name: Wait for dynamodb-local
+        run: |
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null "$DYNAMO_ENDPOINT"; then
+              echo "dynamodb-local is reachable at $DYNAMO_ENDPOINT (attempt $i)"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "dynamodb-local did not become reachable within 30s" >&2
+          exit 1
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      # No -short: this is the entire point of this job. The integration
+      # and 12-goroutine concurrency tests (internal/adapters/dynamo/...)
+      # gate on DYNAMO_ENDPOINT being reachable and must actually run here,
+      # not skip. Credentials are hardcoded local/local in the tests' own
+      # config.Config, and each test creates and drops its own uniquely
+      # named table via dynamo.EnsureTable — no seeding step is required.
+      - name: Test (race detector, full suite incl. DynamoDB integration)
+        run: go test -race ./...
