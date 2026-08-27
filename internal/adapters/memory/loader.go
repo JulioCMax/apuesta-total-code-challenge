@@ -289,7 +289,7 @@ func buildSelections(raw []rawSelection) ([]event.Selection, error) {
 			line = &d
 		}
 
-		selections = append(selections, event.Selection{
+		sel := event.Selection{
 			ID:         rs.ID,
 			MarketID:   rs.MarketID,
 			EventID:    rs.EventID,
@@ -297,7 +297,39 @@ func buildSelections(raw []rawSelection) ([]event.Selection, error) {
 			Line:       line,
 			Odds:       odds,
 			IsDisabled: rs.IsDisabled,
-		})
+		}
+
+		if err := applySuperCuotaBoost(&sel); err != nil {
+			return nil, fmt.Errorf("selection %s: %w", rs.ID, err)
+		}
+
+		selections = append(selections, sel)
 	}
 	return selections, nil
+}
+
+// applySuperCuotaBoost overwrites sel.Odds with its curated Super Cuota
+// boost when sel.ID is present in seed.SuperCuotaOdds, recording the
+// pre-boost value in sel.OriginalOdds so the UI can show the improvement
+// honestly (design: Super Cuota). A selection absent from the curated set
+// is left completely untouched and OriginalOdds stays nil.
+func applySuperCuotaBoost(sel *event.Selection) error {
+	boostedLiteral, boosted := seed.SuperCuotaOdds[sel.ID]
+	if !boosted {
+		return nil
+	}
+
+	boostedDecimal, err := decimal.NewFromString(boostedLiteral)
+	if err != nil {
+		return fmt.Errorf("super cuota: parse boosted odds %q: %w", boostedLiteral, err)
+	}
+	boostedOdds, err := money.NewOdds(boostedDecimal)
+	if err != nil {
+		return fmt.Errorf("super cuota: %w", err)
+	}
+
+	original := sel.Odds
+	sel.OriginalOdds = &original
+	sel.Odds = boostedOdds
+	return nil
 }

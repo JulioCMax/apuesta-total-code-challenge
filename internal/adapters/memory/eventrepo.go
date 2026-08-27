@@ -40,10 +40,11 @@ func NewEventRepository() (*EventRepository, error) {
 		byID[e.ID] = e
 		for _, m := range e.Markets {
 			for _, s := range m.Selections {
-				bySelectionID[s.ID] = event.SelectionRef{
-					ID: s.ID, EventID: s.EventID, MarketID: s.MarketID,
-					Name: s.Name, Odds: s.Odds, IsDisabled: s.IsDisabled,
-				}
+				// NewSelectionRef propagates e's own Bet Builder eligibility
+				// (and s's OriginalOdds, if boosted) onto the resolved
+				// reference (spec: events-catalog/SelectionRef Carries Bet
+				// Builder Eligibility).
+				bySelectionID[s.ID] = event.NewSelectionRef(s, e)
 			}
 		}
 	}
