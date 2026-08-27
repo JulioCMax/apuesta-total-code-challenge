@@ -310,9 +310,12 @@ paths:
             schema:
               $ref: "#/components/schemas/BetSlipRequest"
             example:
+              # Dos selecciones de eventos DISTINTOS: México vs Sudáfrica y
+              # EE.UU. vs Paraguay. Una combinada exige eventos distintos,
+              # así que este ejemplo es ejecutable tal cual desde /docs.
               selectionIds:
                 - 0ML784926076341366984H
-                - 0QA784926076341367023Q1714Q0
+                - 0ML784926073862533120H
               stake: 100
       responses:
         "200":
