@@ -33,7 +33,7 @@ Se adopta la **separación por audiencia**, con una frontera precisa:
 
 **En español (registro formal y neutro):**
 
-- `README.md` y los diez documentos de `docs/adr/`.
+- `README.md` y todos los documentos de `docs/adr/`.
 - Descripciones, resúmenes y ejemplos de `api/openapi.yaml`.
 - Los mensajes de error orientados al usuario final que viajan en el campo
   `error.message` de la respuesta (por ejemplo, `"Saldo insuficiente para realizar la
