@@ -30,7 +30,7 @@ la revoque manualmente.
 ## Decisión
 
 Se adopta **asunción de rol vía OpenID Connect (OIDC)**, resuelta por
-`aws-actions/configure-aws-credentials@v4` dentro de `.github/workflows/deploy.yml`. El
+`aws-actions/configure-aws-credentials@v6` dentro de `.github/workflows/deploy.yml`. El
 flujo de trabajo se dispara únicamente con `workflow_dispatch` —nunca con `push` ni
 `pull_request`— y declara `environment: production`, de modo que cualquier protección de
 entorno configurada en el repositorio (por ejemplo, revisores obligatorios) se aplica
@@ -106,6 +106,36 @@ inyectar pasos adicionales. Sólo `deploy.yml`, disparado exclusivamente a mano,
 credenciado y disparado por una persona es la misma que documenta el proyecto en su
 propia arquitectura de flujos de trabajo, y evita que la superficie de un *pull request*
 hostil incluya la posibilidad de desplegar nada.
+
+### Por qué el despliegue no es continuo
+
+La separación de arriba explica por qué `deploy.yml` no se dispara desde un *pull
+request*. No explica lo otro: por qué fusionar a `main` tampoco despliega. Es una
+decisión distinta —de producto, no de seguridad— y se toma así por tres motivos.
+
+El primero es que **este repositorio no es dueño del entorno**. Un despliegue continuo
+declara que quien aprueba una fusión aprueba también una salida a producción. Esa
+equivalencia es razonable cuando el equipo que fusiona es el que opera el servicio y
+carga con su disponibilidad; aquí no es el caso. Automatizarla sería tomar en nombre de
+otro una decisión de política operativa que no corresponde a este proyecto.
+
+El segundo es que **el entorno desplegado es una demostración, no un servicio**. Las
+apuestas que se colocan en él descuentan saldo real de su tabla, y su valor está en
+poder mostrarse en un estado conocido y estable. Un despliegue automático en cada
+fusión reemplazaría ese estado sin aviso, justo mientras alguien lo está revisando.
+
+El tercero es de coherencia con la propia norma que este proyecto documenta: el flujo
+declara `environment: production` precisamente para que las protecciones de entorno
+—revisores obligatorios, por ejemplo— se apliquen antes de emitir credenciales. Un
+disparo automático a partir de una fusión vaciaría de sentido esa protección, porque el
+punto de control humano quedaría antes del paso que lo necesita, y no en él.
+
+**Qué haría falta para volverlo continuo**, si el entorno cambiara de dueño: añadir
+`push: branches: [main]` a los disparadores de `deploy.yml` y mantener
+`environment: production` como compuerta de aprobación. La política de confianza ya
+contempla ese caso —acotar la condición `sub` a `ref:refs/heads/main`—, de modo que el
+cambio sería de dos líneas y no exigiría rehacer el rol. La restricción es deliberada,
+no una limitación técnica.
 
 ## Consecuencias
 
