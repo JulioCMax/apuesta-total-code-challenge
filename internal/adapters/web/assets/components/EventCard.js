@@ -181,7 +181,21 @@ export default {
               :disabled="selection.isDisabled || suspended"
               @click="onSelect(market, selection)"
             >
-              <span class="odd-value">{{ fmtOdds(selection.odds) }}</span>
+              <!--
+                Super Cuota: the API only ever sends originalOdds for a
+                curated, boosted selection (never null — omitted when
+                absent), so its mere presence is the whole signal. The
+                struck-through original sits right beside the boosted
+                value so the improvement reads as honest, not as a
+                second, unexplained number.
+              -->
+              <span v-if="selection.originalOdds != null" class="badge badge-boost" title="Super Cuota: cuota mejorada">SC</span>
+              <span class="odd-value-row">
+                <span class="odd-value">{{ fmtOdds(selection.odds) }}</span>
+                <span v-if="selection.originalOdds != null" class="odd-original" :title="'Cuota original: ' + fmtOdds(selection.originalOdds)">
+                  {{ fmtOdds(selection.originalOdds) }}
+                </span>
+              </span>
               <span class="odd-label">{{ selectionLabel(selection) }}</span>
             </button>
           </div>

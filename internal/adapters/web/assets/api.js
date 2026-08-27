@@ -124,11 +124,18 @@ export function eventDetail(id) {
   return request(`/events/${encodeURIComponent(id)}`);
 }
 
-/** POST /betslip/calculate — public; prices singles and the combo. */
-export function calculate({ selectionIds, stake }) {
+/**
+ * POST /betslip/calculate — public; prices singles and the combo.
+ *
+ * isBetBuilder is sent exactly as the caller passes it (default false):
+ * it must only ever be true when the caller has explicitly enabled the
+ * Bet Builder toggle, never inferred from the selections themselves — the
+ * server enforces the actual rule either way.
+ */
+export function calculate({ selectionIds, stake, isBetBuilder = false }) {
   return request('/betslip/calculate', {
     method: 'POST',
-    body: { selectionIds, stake },
+    body: { selectionIds, stake, isBetBuilder },
   });
 }
 
@@ -137,16 +144,17 @@ export function calculate({ selectionIds, stake }) {
  *
  * The Idempotency-Key is generated per placement attempt so a retry of the
  * *same* attempt is deduplicated by the API, while a deliberate second bet
- * carries a new key and is a genuinely new placement.
+ * carries a new key and is a genuinely new placement. isBetBuilder mirrors
+ * calculate()'s own field.
  */
-export function place({ selectionIds, stake, idempotencyKey }) {
+export function place({ selectionIds, stake, idempotencyKey, isBetBuilder = false }) {
   const headers = {};
   if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
   return request('/betslip/place', {
     method: 'POST',
     auth: true,
     headers,
-    body: { selectionIds, stake },
+    body: { selectionIds, stake, isBetBuilder },
   });
 }
 

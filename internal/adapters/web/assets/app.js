@@ -46,6 +46,11 @@ const App = {
       quoteError: null,
       calculating: false,
       slipOpen: false,
+      // Explicit Bet Builder opt-in (spec: bet-slip-calculation/Bet
+      // Builder Explicit UI Affordance). isBetBuilder is only ever sent
+      // true when this toggle is on — never inferred from picking 2+
+      // selections from the same event.
+      betBuilder: false,
 
       // Placement
       placing: false,
@@ -114,6 +119,7 @@ const App = {
      */
     legs: { handler: 'scheduleCalculate', deep: true },
     stake: 'scheduleCalculate',
+    betBuilder: 'scheduleCalculate',
   },
 
   async mounted() {
@@ -240,7 +246,11 @@ const App = {
       const seq = (this._calcSeq = (this._calcSeq || 0) + 1);
       this.calculating = true;
       try {
-        const quote = await api.calculate({ selectionIds: this.selectedIds, stake: amount });
+        const quote = await api.calculate({
+          selectionIds: this.selectedIds,
+          stake: amount,
+          isBetBuilder: this.betBuilder,
+        });
         if (seq !== this._calcSeq) return;
         this.quote = quote;
         this.quoteError = null;
@@ -270,6 +280,7 @@ const App = {
           selectionIds: this.selectedIds,
           stake: Number(this.stake),
           idempotencyKey: api.newIdempotencyKey(),
+          isBetBuilder: this.betBuilder,
         });
         this.placeResult = result;
         if (result.balanceAfter !== null && result.balanceAfter !== undefined) {
@@ -302,7 +313,7 @@ const App = {
       this.placeError = null;
       this.placeResult = null;
 
-      const payload = { selectionIds: this.selectedIds, stake: Number(this.stake) };
+      const payload = { selectionIds: this.selectedIds, stake: Number(this.stake), isBetBuilder: this.betBuilder };
       const attempts = [
         api.place({ ...payload, idempotencyKey: api.newIdempotencyKey() }),
         api.place({ ...payload, idempotencyKey: api.newIdempotencyKey() }),
@@ -512,10 +523,12 @@ const App = {
         :currency="currency"
         :probing="probing"
         :probe-results="probeResults"
+        :bet-builder="betBuilder"
         @close="slipOpen = false"
         @remove="removeLeg"
         @clear="clearSlip"
         @update:stake="stake = $event"
+        @update:bet-builder="betBuilder = $event"
         @place="placeBet"
         @probe="probeConcurrency"
       />
