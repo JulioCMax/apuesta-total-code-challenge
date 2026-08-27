@@ -100,6 +100,12 @@ type Selection struct {
 	Line       *decimal.Decimal // nil when the market has no line (e.g. 1X2)
 	Odds       money.Odds
 	IsDisabled bool
+
+	// OriginalOdds is nil unless this selection is present in the curated
+	// Super Cuota seed, in which case it holds the pre-boost value and Odds
+	// holds the boosted one — the single value used everywhere pricing
+	// occurs (design: Super Cuota).
+	OriginalOdds *money.Odds
 }
 
 // SelectionRef is a lightweight, resolved reference to a single betting
@@ -112,4 +118,36 @@ type SelectionRef struct {
 	Name       string
 	Odds       money.Odds
 	IsDisabled bool
+
+	// EventBetBuilderEnabled is the owning Event's IsBetBuilderEnabled flag,
+	// propagated at catalog index-build time (NewSelectionRef) so
+	// BetSlip.Quote can evaluate Bet Builder eligibility without
+	// re-querying the full Event (spec: events-catalog/SelectionRef Carries
+	// Bet Builder Eligibility).
+	EventBetBuilderEnabled bool
+
+	// OriginalOdds mirrors Selection.OriginalOdds: nil unless this
+	// selection carries a Super Cuota boost.
+	OriginalOdds *money.Odds
+}
+
+// NewSelectionRef builds the resolved reference sel's owning event (owner)
+// needs to carry: the selection's own pricing data plus owner's Bet
+// Builder eligibility, propagated here rather than re-derived by every
+// caller (spec: events-catalog/SelectionRef Carries Bet Builder
+// Eligibility). The caller is responsible for passing the Event that
+// actually owns sel (sel.EventID == owner.ID); this function trusts that
+// invariant rather than re-validating it, exactly like every other
+// load-time index build in this package.
+func NewSelectionRef(sel Selection, owner Event) SelectionRef {
+	return SelectionRef{
+		ID:                     sel.ID,
+		EventID:                sel.EventID,
+		MarketID:               sel.MarketID,
+		Name:                   sel.Name,
+		Odds:                   sel.Odds,
+		IsDisabled:             sel.IsDisabled,
+		EventBetBuilderEnabled: owner.IsBetBuilderEnabled,
+		OriginalOdds:           sel.OriginalOdds,
+	}
 }

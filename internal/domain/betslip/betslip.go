@@ -13,6 +13,16 @@ import (
 type BetSlip struct {
 	Selections []event.SelectionRef
 	Stake      money.Money
+
+	// AllowSameEventCombo is the caller's explicit Bet Builder opt-in
+	// (design D26). Default false preserves every existing same-event
+	// rejection unchanged. A same-event combo is only ever allowed through
+	// when this is true AND every selection belonging to the duplicated
+	// event has EventBetBuilderEnabled — opt-in alone on a disabled event
+	// is refused with the distinct ErrBetBuilderNotAvailable, never
+	// silently downgraded to ErrSameEventCombo (spec: bet-slip-
+	// calculation/Same-Event Combo Rejection).
+	AllowSameEventCombo bool
 }
 
 // Leg is one priced outcome within a Quote: a Single carries exactly one
@@ -48,6 +58,12 @@ func (b BetSlip) Quote(minStake, maxStake money.Money, maxSelections int) (Quote
 
 	seenSelections := make(map[string]bool, len(b.Selections))
 	seenEvents := make(map[string]bool, len(b.Selections))
+	// betBuilderEnabledByEvent records each selection's own
+	// EventBetBuilderEnabled flag, keyed by event ID. Every selection
+	// belonging to the same event carries the same value (propagated from
+	// one owning Event at catalog build time), so a later write never
+	// disagrees with an earlier one for the same key.
+	betBuilderEnabledByEvent := make(map[string]bool, len(b.Selections))
 	var duplicateEventID string
 
 	for _, sel := range b.Selections {
@@ -64,6 +80,7 @@ func (b BetSlip) Quote(minStake, maxStake money.Money, maxSelections int) (Quote
 			duplicateEventID = sel.EventID
 		}
 		seenEvents[sel.EventID] = true
+		betBuilderEnabledByEvent[sel.EventID] = sel.EventBetBuilderEnabled
 	}
 
 	singles := make([]Leg, 0, len(b.Selections))
@@ -86,7 +103,19 @@ func (b BetSlip) Quote(minStake, maxStake money.Money, maxSelections int) (Quote
 	}
 
 	if duplicateEventID != "" {
-		return Quote{}, ErrSameEventCombo{EventID: duplicateEventID}
+		switch {
+		case !b.AllowSameEventCombo:
+			// No opt-in: the pre-existing rule, unchanged regardless of the
+			// event's own flag.
+			return Quote{}, ErrSameEventCombo{EventID: duplicateEventID}
+		case !betBuilderEnabledByEvent[duplicateEventID]:
+			// Opted in, but the event itself has Bet Builder disabled: the
+			// caller asked explicitly and deserves a distinct answer, never
+			// the generic same-event rejection (design: Bet Builder rule).
+			return Quote{}, ErrBetBuilderNotAvailable{EventID: duplicateEventID}
+		}
+		// Opted in AND the event allows it: fall through and price the
+		// combo exactly like any other, via money.Combine below.
 	}
 
 	combinedOdds := money.Combine(odds...)
