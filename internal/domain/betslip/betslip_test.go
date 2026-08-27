@@ -322,3 +322,67 @@ func TestQuote_StakeBounds(t *testing.T) {
 		})
 	}
 }
+
+// TestQuote_PotentialReturnsRoundedToTwoDecimals proves the challenge's
+// explicit requirement that potentialReturns = stake × odds, rounded to two
+// decimals. Round2's half-up behaviour has its own boundary test in
+// domain/money, but that proves the rule in isolation; this proves it is
+// actually the rule applied to potentialReturns, at the boundary, through
+// the public Quote path a caller reaches.
+func TestQuote_PotentialReturnsRoundedToTwoDecimals(t *testing.T) {
+	cases := []struct {
+		name  string
+		stake string
+		odds  string
+		want  string
+	}{
+		// 10.01 * 1.50 = 15.015 — lands exactly on the half, must round up.
+		{name: "half rounds up", stake: "10.01", odds: "1.50", want: "15.02"},
+		// 10.01 * 1.20 = 12.012 — below the half, must round down.
+		{name: "below half rounds down", stake: "10.01", odds: "1.20", want: "12.01"},
+		// 100.00 * 1.85 = 185.00 — already exact, must not drift.
+		{name: "exact product is untouched", stake: "100.00", odds: "1.85", want: "185.00"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			slip := betslip.BetSlip{
+				Selections: []event.SelectionRef{
+					newSelection(t, "sel-1", "evt-1", tc.odds),
+				},
+				Stake: mustMoney(t, tc.stake),
+			}
+
+			quote, err := slip.Quote(mustMoney(t, minStakeFixture), mustMoney(t, maxStakeFixture), maxSelectionsFixture)
+
+			require.NoError(t, err)
+			require.Len(t, quote.Singles, 1)
+			require.Equal(t, tc.want, quote.Singles[0].PotentialReturns.String())
+		})
+	}
+}
+
+// TestQuote_ComboPotentialReturnsUseRoundedOdds pins the ORDER of the two
+// roundings, which a single end-to-end assertion cannot distinguish. The
+// combo's potentialReturns must be derived from the already-rounded
+// combined odds, not from the raw product of the individual odds.
+//
+// 1.85 * 2.10 = 3.885 -> Round2 -> 3.89, and 10.01 * 3.89 = 38.9389 -> 38.94.
+// Multiplying by the unrounded 3.885 instead would give 38.88885 -> 38.89,
+// so this case fails loudly if the order is ever swapped.
+func TestQuote_ComboPotentialReturnsUseRoundedOdds(t *testing.T) {
+	slip := betslip.BetSlip{
+		Selections: []event.SelectionRef{
+			newSelection(t, "sel-1", "evt-1", "1.85"),
+			newSelection(t, "sel-2", "evt-2", "2.10"),
+		},
+		Stake: mustMoney(t, "10.01"),
+	}
+
+	quote, err := slip.Quote(mustMoney(t, minStakeFixture), mustMoney(t, maxStakeFixture), maxSelectionsFixture)
+
+	require.NoError(t, err)
+	require.NotNil(t, quote.Combo)
+	require.Equal(t, "3.89", quote.Combo.Odds.String())
+	require.Equal(t, "38.94", quote.Combo.PotentialReturns.String())
+}
