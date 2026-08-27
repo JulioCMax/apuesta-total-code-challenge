@@ -15,6 +15,7 @@ import (
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/adapters/http/apperror"
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/adapters/http/handler"
 	"github.com/JulioCMax/apuesta-total-code-challenge/internal/adapters/http/middleware"
+	"github.com/JulioCMax/apuesta-total-code-challenge/internal/adapters/web"
 )
 
 // Dependencies carries every handler and cross-cutting collaborator
@@ -77,6 +78,20 @@ func NewRouter(deps Dependencies) (*gin.Engine, error) {
 	// (Phase 14).
 	r.GET("/openapi.yaml", handler.OpenAPISpec())
 	r.GET("/docs", handler.Docs())
+
+	// GET /app serves the embedded web client (internal/adapters/web). It
+	// belongs beside /docs for the same reasons: both are demonstration
+	// surfaces rather than business endpoints, so neither is rate limited
+	// nor JWT-guarded. The client is only a browser — every API call it
+	// makes goes through /api/v1 and is limited and guarded exactly like
+	// any other caller's.
+	//
+	// Only the catch-all is registered. A bare GET /app carries no
+	// filepath parameter and so cannot match it; gin's RedirectTrailingSlash
+	// (left at its default) answers that request with a redirect to
+	// /app/, which does match. Registering /app explicitly as well would
+	// collide with this catch-all in gin's route tree.
+	r.GET("/app/*filepath", handler.App(web.Assets))
 
 	rateLimit, err := middleware.RateLimit(deps.RateLimit)
 	if err != nil {

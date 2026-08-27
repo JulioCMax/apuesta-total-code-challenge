@@ -46,6 +46,7 @@ Cuando el arranque termina, ya está disponible:
 
 | Recurso | URL |
 |---|---|
+| **Cliente web** (calendario y cupón) | <http://localhost:8080/app> |
 | Documentación interactiva (Swagger UI) | <http://localhost:8080/docs> |
 | Especificación OpenAPI 3 | <http://localhost:8080/openapi.yaml> |
 | Sonda de vida | <http://localhost:8080/health> |
@@ -70,9 +71,11 @@ Para detener y limpiar el entorno:
 docker compose down -v
 ```
 
-**Requisitos**: únicamente Docker. La documentación interactiva viene embebida en el
-binario, por lo que `/docs` funciona **sin conexión a internet**, sin depender de ningún
-CDN.
+**Requisitos**: únicamente Docker. Tanto la documentación interactiva como el cliente web
+vienen embebidos en el binario, por lo que `/docs` y `/app` funcionan **sin conexión a
+internet**, sin depender de ningún CDN ni de ninguna etapa de compilación de JavaScript.
+Ver [«Cliente web»](#cliente-web-httplocalhost8080app) para lo que demuestra cada
+pantalla.
 
 ### Alternativa: iniciar con doble clic (sin usar una terminal)
 
@@ -111,6 +114,7 @@ están en la raíz y quedan fuera del límite de tasa.
 | `GET` | `/health` | — | Estado del servicio y versión |
 | `GET` | `/docs` | — | Swagger UI embebido (funciona sin conexión) |
 | `GET` | `/openapi.yaml` | — | Especificación OpenAPI 3.0.3 |
+| `GET` | `/app` | — | Cliente web de demostración (calendario y cupón) |
 | `POST` | `/api/v1/auth/login` | — | Devuelve un JWT y su vigencia en segundos |
 | `GET` | `/api/v1/events?from=&to=` | — | Lista de eventos por rango de fechas |
 | `GET` | `/api/v1/events/{id}` | — | Detalle del evento con sus mercados ordenados |
@@ -395,6 +399,53 @@ El identificador del usuario procede **exclusivamente** del JWT verificado, nunc
 parámetro de consulta: un cliente no puede pedir el historial de otra persona. El
 historial incluye tanto las apuestas aceptadas como las rechazadas, porque un intento
 rechazado es un registro de auditoría.
+
+### Cliente web: `http://localhost:8080/app`
+
+Además de `curl` y de Swagger UI, el mismo binario sirve un cliente web que consume esta
+API desde el navegador. Reproduce el diseño de referencia del reto: calendario por día,
+tarjetas de evento con su fase/grupo y su metadata de UI, los cuatro mercados por defecto
+en carrusel, y el cupón de apuestas.
+
+Existe por una razón concreta: es la prueba de que la metadata que expone la API
+**alcanza para construir la interfaz**. `settings.hasStatistics` e
+`settings.isBetBuilderEnabled` son las insignias de la tarjeta; `marketType.id` es la
+etiqueta junto al título del mercado, que es el identificador con el que una UI real
+decide tratamientos especiales como Super Cuota.
+
+| Qué hace | Endpoint que ejercita |
+|---|---|
+| Pestañas **Agenda / 3 Días / Semana** | `GET /events` sin filtros y con `from`/`to` reales |
+| Abrir una tarjeta | `GET /events/{id}` — los mercados se pintan en el orden que devuelve la API, sin reordenar en el cliente |
+| Tocar una cuota | acumula la selección y recalcula con `POST /betslip/calculate` |
+| **Apostar** | `POST /auth/login` y `POST /betslip/place` con `Idempotency-Key` |
+| **Probar concurrencia** | dos `POST /betslip/place` simultáneas con claves distintas |
+
+El botón **«Probar concurrencia: 2 apuestas simultáneas»** dentro del cupón es la
+demostración visible del requisito de saldo. Con un monto que el saldo sólo financia una
+vez, dispara dos colocaciones a la vez y muestra el resultado de cada una: exactamente una
+`accepted` y una rechazada con `INSUFFICIENT_FUNDS`, y el saldo final refleja un único
+débito. Es la misma garantía que prueba
+[`place_race_test.go`](internal/application/betslip/place_race_test.go), pero en pantalla.
+
+Tres decisiones que conviene explicar:
+
+- **El calendario se ancla al catálogo, no al reloj.** El conjunto de datos es el Mundial
+  de junio de 2026; tomar «hoy» del reloj del sistema dejaría todos los filtros de rango
+  fuera del catálogo y la pantalla vacía, con la API funcionando perfectamente. El día de
+  referencia es el primer día con partidos.
+- **Las reglas las decide el servidor.** El cliente permite agregar al cupón dos
+  selecciones del mismo evento a propósito, para que la API responda con su
+  `SAME_EVENT_COMBO` y el error tipado se vea donde corresponde, en lugar de quedar
+  escondido tras un botón deshabilitado.
+- **No recalcula nada.** Cuota combinada y ganancia potencial se muestran tal como
+  llegan de `calculate`. Multiplicarlas en el navegador es la forma habitual de que la
+  interfaz termine mostrando un número distinto al de la apuesta que acaba de registrar.
+
+Se sirve embebido en el binario, con Vue vendorizado y sin CDN, exactamente igual que
+`/docs` (ver [`internal/adapters/web/VENDORED.md`](internal/adapters/web/VENDORED.md)):
+funciona sin conexión, no agrega un contenedor ni una etapa de compilación de
+JavaScript, y viaja dentro del mismo zip de Lambda.
 
 ### Envoltorio de error: una sola forma para todos los fallos
 
@@ -1093,6 +1144,8 @@ git log --oneline --reverse --format='%s' | grep -E '^(test|feat)' | head -20
 - [x] Nueve ADR documentando cada decisión de arquitectura
 - [x] Diagrama de arquitectura versionado, con su fuente editable
 - [x] OpenAPI 3 y Swagger UI embebidos, funcionales sin conexión
+- [x] Cliente web embebido en `/app` que consume la propia API pública, con la prueba
+      de concurrencia ejecutable desde la pantalla
 - [x] Pruebas en cuatro niveles, incluida la demostración real de concurrencia
 - [x] `scripts/deploy-aws.sh` idempotente, con política de IAM de privilegio mínimo, y
       `scripts/destroy-aws.sh` para eliminar todo sin dejar coste

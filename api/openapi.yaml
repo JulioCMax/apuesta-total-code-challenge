@@ -105,6 +105,32 @@ paths:
               schema:
                 type: string
 
+  /app:
+    get:
+      tags: [Documentación]
+      summary: Cliente web de demostración
+      description: >-
+        Aplicación de una sola página, embebida en el binario, que consume
+        esta misma API pública desde el navegador: calendario por rango de
+        fechas, detalle de evento con sus mercados ordenados, cupón de
+        apuestas y colocación autenticada. No expone ninguna capacidad
+        adicional: cada acción que realiza es una llamada a los endpoints
+        documentados más abajo, sujeta al mismo límite de tasa y al mismo
+        guardián JWT que cualquier otro cliente.
+
+        Se sirve junto con sus recursos estáticos bajo el mismo prefijo
+        (`/app/app.js`, `/app/app.css`, `/app/vendor/…`), sin CDN, de modo
+        que funciona sin conexión a internet.
+      operationId: getWebClient
+      security: []
+      responses:
+        "200":
+          description: Documento HTML del cliente web.
+          content:
+            text/html:
+              schema:
+                type: string
+
   /api/v1/auth/login:
     post:
       tags: [Autenticación]

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Apuesta Total — Mundial 2026</title>
+<meta name="description" content="Cliente web de demostración de la API de eventos, mercados y cupón de apuestas del Mundial 2026.">
+<meta name="color-scheme" content="light">
+<link rel="icon" type="image/svg+xml" href="/app/favicon.svg">
+<link rel="stylesheet" href="/app/app.css">
+</head>
+<body>
+<!--
+  Absolute /app/ paths, not relative ones. The client is reachable both as
+  /app (which gin redirects) and /app/, and a relative href would resolve
+  against a different base in each case, 404-ing the stylesheet on one of
+  them.
+-->
+<div id="app"></div>
+<noscript>
+  <p class="noscript">
+    Este cliente necesita JavaScript. La API funciona igual sin él:
+    <a href="/docs">/docs</a> documenta cada endpoint.
+  </p>
+</noscript>
+<script type="module" src="/app/app.js"></script>
+</body>
+</html>
