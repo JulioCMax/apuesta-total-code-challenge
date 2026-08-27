@@ -1194,9 +1194,9 @@ feat(domain): add BetSlip.Quote and the Bet aggregate
 ...
 ```
 
-El historial contiene **25 commits `test:`**, cada uno con la prueba en rojo que precede
-a su commit `feat:` correspondiente, alternándose en ese orden a lo largo de toda la
-construcción. El comando siguiente lo muestra de un vistazo:
+Cada commit `test:` del historial lleva la prueba en rojo que precede a su commit `feat:`
+correspondiente, y ambos se alternan en ese orden a lo largo de toda la construcción. El
+comando siguiente lo muestra de un vistazo:
 
 ```bash
 git log --oneline --reverse --format='%s' | grep -E '^(test|feat)' | head -20
@@ -1210,28 +1210,38 @@ git log --oneline --reverse --format='%s' | grep -E '^(test|feat)' | head -20
 
 | | |
 |---|---|
-| Commits | 100 |
-| Fusiones | 0 — historial completamente lineal |
-| Ramas | una: `main` |
-| Commits con cuerpo explicativo | 82 de 100 (~106 palabras de media) |
+| Fusiones | **ninguna** — historial completamente lineal |
+| Ramas | **una**: `main` |
+| Cuerpo explicativo | en la gran mayoría de los commits |
+
+Esas dos primeras filas no son estadísticas, son la estrategia: sólo cambiarían si se
+decidiera fusionar o ramificar. El resto de esta sección describe criterios, no cifras.
+Cada afirmación va acompañada del comando que la comprueba sobre el historial vivo, de
+modo que quien la lea no tenga que creerla —y que no pueda quedar desfasada:
+
+```bash
+git rev-list --count HEAD                  # commits
+git rev-list --count --merges HEAD         # fusiones (0)
+git log --format='%s' | sed -E 's/^([a-z]+)[(:].*/\1/' | sort | uniq -c | sort -rn
+```
 
 **Convención de mensajes**: [Conventional Commits](https://www.conventionalcommits.org/es/).
-Los tipos empleados son `feat` (31), `test` (25), `fix` (21), `docs` (16), `chore` (4),
-`refactor` (2) y `build` (1). Los **ámbitos son las capas de la arquitectura** —`domain`,
-`application`, `adapters`, `platform`— más `scripts`, `web` y `readme`, de modo que
+Los tipos empleados son `feat`, `test`, `fix`, `docs`, `chore`, `refactor` y `build`. Los
+**ámbitos son las capas de la arquitectura** —`domain`, `application`, `adapters`,
+`platform`— más `scripts`, `web` y `readme`, de modo que
 `git log --oneline --grep "^feat(domain)"` responde «qué se añadió al dominio» sin abrir
 un solo fichero.
 
 **El idioma también sigue esa frontera**: tipo y ámbito en inglés, porque son lo que se
 consulta con `--grep`; asunto y cuerpo en español, porque los lee una persona. Los
-primeros 81 commits están íntegramente en inglés: el criterio cambió a mitad del
-proyecto y el corte se dejó registrado en
+commits anteriores a `60d4fe7` están íntegramente en inglés: el criterio cambió a mitad
+del proyecto y el corte se dejó registrado en
 [ADR-0007](docs/adr/0007-idioma-de-la-documentacion.md) en vez de reescribir el
 historial.
 
-**El asunto dice qué; el cuerpo dice por qué.** Esa es la regla, y es la razón de que tres
-de cada cuatro commits tengan cuerpo. Un diff ya muestra perfectamente lo que cambió: lo
-que no puede mostrar es qué alternativa se descartó y qué se aceptó a cambio. El historial
+**El asunto dice qué; el cuerpo dice por qué.** Esa es la regla, y es la razón de que la
+gran mayoría de los commits lleve cuerpo. Un diff ya muestra perfectamente lo que cambió:
+lo que no puede mostrar es qué alternativa se descartó y qué se aceptó a cambio. El historial
 es además la única documentación que **no puede desincronizarse del código**, porque va
 atada al cambio que la produjo.
 
@@ -1256,8 +1266,8 @@ acompañado del siguiente no es una unidad revisable, es un fragmento.
 
 Comprobado recorriendo los **doce commits más recientes que tocan código** con
 `go build ./...` y `go test -short ./...` en cada punto del historial: los doce pasan de
-forma aislada. La verificación se acota a esa ventana porque recorrer los cien
-tarda más de lo que aporta; el criterio, en cambio, se aplicó desde el primero.
+forma aislada. La verificación se acota a esa ventana porque recorrer el historial
+completo tarda más de lo que aporta; el criterio, en cambio, se aplicó desde el primero.
 
 ### Por qué lineal sobre `main` aquí
 

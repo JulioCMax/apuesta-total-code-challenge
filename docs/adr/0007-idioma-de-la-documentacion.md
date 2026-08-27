@@ -86,13 +86,15 @@ fichero. El asunto y el cuerpo no los consulta ninguna herramienta; los lee una 
 feat(deploy): recurrir a una API Gateway cuando la cuenta restringe las Function URLs
 ```
 
-**Los primeros 81 commits del historial están escritos íntegramente en inglés.** El
-cambio se produjo en `feat(events): exponer la metadata de interfaz en el listado`, y los
-19 posteriores siguen la regla que este ADR fija ahora. Se deja constancia del corte en
-lugar de reescribir el historial, por dos razones: un historial es el registro de lo que
-ocurrió, y uniformarlo a posteriori lo convierte en un registro peor; y esos 81 mensajes
-están bien escritos en inglés, de modo que traducirlos en masa sólo degradaría su prosa
-a cambio de una apariencia de coherencia.
+**El historial arranca escrito íntegramente en inglés.** El cambio se produjo en
+`60d4fe7 feat(events): exponer la metadata de interfaz en el listado`, y desde ahí los
+mensajes siguen la regla que este ADR fija. El corte se comprueba con
+`git log --oneline 60d4fe7~1` frente a `git log --oneline 60d4fe7..HEAD`.
+
+Se deja constancia de ese corte en lugar de reescribir el historial, por dos razones: un
+historial es el registro de lo que ocurrió, y uniformarlo a posteriori lo convierte en un
+registro peor; y los mensajes en inglés están bien escritos, de modo que traducirlos en
+masa sólo degradaría su prosa a cambio de una apariencia de coherencia.
 
 Se emplea un **registro formal y neutro**: tratamiento impersonal o de usted, sin
 localismos ni voseo, de modo que el texto resulte natural para cualquier lector
@@ -112,8 +114,8 @@ producto y sus decisiones, no el andamiaje empleado para producirlo.
   aplicada.
 - **Negativas**: el historial de commits queda partido en dos idiomas, y quien lo recorra
   entero verá el corte. Es el precio de haber cambiado de criterio a mitad del proyecto;
-  la alternativa —reescribir 81 mensajes— cuesta más de lo que arregla, y la sección de
-  control de versiones del README remite aquí para que el corte se lea como una decisión
-  registrada y no como un descuido.
+  la alternativa —reescribir cada mensaje anterior— cuesta más de lo que arregla, y la
+  sección de control de versiones del README remite aquí para que el corte se lea como
+  una decisión registrada y no como un descuido.
 - **Neutras**: el README abre con una nota breve que enuncia esta regla, para que el
   criterio quede explícito desde la primera línea en lugar de deducirse.
