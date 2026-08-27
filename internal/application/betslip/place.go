@@ -18,6 +18,11 @@ type PlaceCommand struct {
 	SelectionIDs   []string
 	Stake          money.Money
 	IdempotencyKey string
+
+	// IsBetBuilder is the caller's explicit Bet Builder opt-in, threaded
+	// unchanged into BetSlip.AllowSameEventCombo exactly like Calculate
+	// (spec: bet-slip-placement/Bet Builder Flag Threading (Place)).
+	IsBetBuilder bool
 }
 
 // PlaceResult is the output of the Place use case: the persisted bet
@@ -53,7 +58,7 @@ func (p *Place) Execute(ctx context.Context, cmd PlaceCommand) (PlaceResult, err
 		return PlaceResult{}, err
 	}
 
-	slip := domainbetslip.BetSlip{Selections: refs, Stake: cmd.Stake}
+	slip := domainbetslip.BetSlip{Selections: refs, Stake: cmd.Stake, AllowSameEventCombo: cmd.IsBetBuilder}
 	quote, err := slip.Quote(p.bounds.MinStake, p.bounds.MaxStake, p.bounds.MaxSelections)
 	if err != nil {
 		return PlaceResult{}, err

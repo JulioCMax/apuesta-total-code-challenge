@@ -11,6 +11,12 @@ import (
 type CalculateCommand struct {
 	SelectionIDs []string
 	Stake        money.Money
+
+	// IsBetBuilder is the caller's explicit Bet Builder opt-in, threaded
+	// unchanged into BetSlip.AllowSameEventCombo. Default false preserves
+	// every existing same-event rejection (spec: bet-slip-calculation/Bet
+	// Builder Flag Threading (Calculate)).
+	IsBetBuilder bool
 }
 
 // ResolvedSelection is one requested selection as resolved against the
@@ -19,6 +25,11 @@ type ResolvedSelection struct {
 	ID      string
 	EventID string
 	Odds    money.Odds
+
+	// OriginalOdds mirrors event.SelectionRef.OriginalOdds: nil unless this
+	// selection carries a Super Cuota boost (spec: bet-slip-calculation/
+	// Boosted Selection Exposes Original Odds).
+	OriginalOdds *money.Odds
 }
 
 // CalculateResult is the output of the Calculate use case: the configured
@@ -55,7 +66,7 @@ func (c *Calculate) Execute(ctx context.Context, cmd CalculateCommand) (Calculat
 		return CalculateResult{}, err
 	}
 
-	slip := domainbetslip.BetSlip{Selections: refs, Stake: cmd.Stake}
+	slip := domainbetslip.BetSlip{Selections: refs, Stake: cmd.Stake, AllowSameEventCombo: cmd.IsBetBuilder}
 	quote, err := slip.Quote(c.bounds.MinStake, c.bounds.MaxStake, c.bounds.MaxSelections)
 	if err != nil {
 		return CalculateResult{}, err
@@ -63,7 +74,7 @@ func (c *Calculate) Execute(ctx context.Context, cmd CalculateCommand) (Calculat
 
 	selections := make([]ResolvedSelection, 0, len(refs))
 	for _, ref := range refs {
-		selections = append(selections, ResolvedSelection{ID: ref.ID, EventID: ref.EventID, Odds: ref.Odds})
+		selections = append(selections, ResolvedSelection{ID: ref.ID, EventID: ref.EventID, Odds: ref.Odds, OriginalOdds: ref.OriginalOdds})
 	}
 
 	return CalculateResult{

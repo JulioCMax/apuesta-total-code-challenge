@@ -37,7 +37,7 @@ saldo refleja un único débito. Es el requisito de concurrencia hecho visible.
 
 ---
 
-> **Nota de idioma**: la documentación de este repositorio (este README, los diez ADR
+> **Nota de idioma**: la documentación de este repositorio (este README, los ADR
 > de `docs/adr/` y las descripciones de la especificación OpenAPI) está redactada en
 > **español**, para que el equipo evaluador pueda revisar las decisiones de diseño con
 > la mayor comodidad posible. El **código y todos los identificadores** —paquetes,
@@ -303,6 +303,9 @@ no son literales del handler.
 
 **5. Regla de negocio: no se combinan dos selecciones del mismo evento**
 
+Salvo que se active el Bet Builder de forma explícita (paso 6), esta combinada se
+rechaza:
+
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/betslip/calculate \
   -H 'Content-Type: application/json' \
@@ -322,7 +325,125 @@ curl -s -X POST http://localhost:8080/api/v1/betslip/calculate \
 
 HTTP `422 Unprocessable Entity`.
 
-**6. Colocación de la apuesta (requiere JWT)**
+**6. Bet Builder: la única excepción, y hay que pedirla**
+
+El Bet Builder permite combinar varias selecciones **del mismo partido** —aquí, ganador
+del partido y «ambos equipos anotan» de *Bélgica vs Egipto*—. Se activa enviando
+`isBetBuilder: true`:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/betslip/calculate \
+  -H 'Content-Type: application/json' \
+  -d '{"selectionIds":["0ML784926070830059520H","0QA784926070830059559Q1714Q0"],"stake":100,"isBetBuilder":true}'
+```
+
+```json
+{
+  "minStake": 1.00,
+  "maxStake": 10000.00,
+  "currency": "PEN",
+  "stake": 100.00,
+  "selections": [
+    { "id": "0ML784926070830059520H",       "eventId": "784926067675947008", "odds": 1.70, "originalOdds": 1.56 },
+    { "id": "0QA784926070830059559Q1714Q0", "eventId": "784926067675947008", "odds": 1.85 }
+  ],
+  "singles": [
+    { "selectionId": "0ML784926070830059520H",       "odds": 1.70, "potentialReturns": 170.00 },
+    { "selectionId": "0QA784926070830059559Q1714Q0", "odds": 1.85, "potentialReturns": 185.00 }
+  ],
+  "combo": {
+    "selectionIds": ["0ML784926070830059520H", "0QA784926070830059559Q1714Q0"],
+    "combinedOdds": 3.15,
+    "potentialReturns": 315.00
+  }
+}
+```
+
+**Quitar `"isBetBuilder": true` de ese mismo cuerpo devuelve `SAME_EVENT_COMBO`.** Ese es
+el punto de la decisión: la activación es **explícita y obligatoria**, nunca se deduce de
+que el boleto contenga dos selecciones del mismo evento. Se exigen dos condiciones a la
+vez —la activación del cliente **y** `settings.isBetBuilderEnabled` del evento—, y ninguna
+basta por sí sola. Si dos partidos distintos aparecen repetidos en el mismo boleto, **los
+dos** deben admitirlo. El porqué está en
+[ADR-0012](docs/adr/0012-bet-builder-explicito-y-datos-de-demostracion.md).
+
+Obsérvese también `originalOdds: 1.56` en la primera selección: es una **Super Cuota**
+(paso 8).
+
+**7. Bet Builder sobre un evento que no lo admite**
+
+*Catar vs Suiza* llega con `settings.isBetBuilderEnabled: false`. Activar el interruptor
+sobre él **no** alcanza:
+
+```bash
+curl -s -X POST http://localhost:8080/api/v1/betslip/calculate \
+  -H 'Content-Type: application/json' \
+  -d '{"selectionIds":["0ML784926076341379076A","0QA784926076341379115Q1714Q0"],"stake":100,"isBetBuilder":true}'
+```
+
+```json
+{
+  "error": {
+    "code": "BET_BUILDER_NOT_AVAILABLE",
+    "message": "El Bet Builder no está disponible para este evento.",
+    "details": { "eventId": "784926068556738560" }
+  },
+  "requestId": "b28c0eee480b0be6"
+}
+```
+
+HTTP `422 Unprocessable Entity`, y **no** `SAME_EVENT_COMBO`: quien activó el interruptor
+pidió algo concreto y merece saber que el problema es **ese** evento, no la combinada en
+sí. Cuando hay más de un evento repetido, `details.eventId` nombra siempre el primero que
+lo impide en el orden en que llegaron las selecciones, de forma determinista.
+
+> Los dos eventos que aparecen como no aptos para Bet Builder son **datos autorados para
+> la demostración**: en `data.json` los 24 eventos lo traen habilitado. La procedencia
+> completa está en la [sección 11](#datos-autorados-para-la-demostración-bet-builder-y-super-cuota).
+
+**8. Super Cuota: cuota mejorada, con la original a la vista**
+
+Cinco selecciones del catálogo llevan una cuota mejorada. En ellas —y sólo en ellas— la
+respuesta agrega `originalOdds`, que conserva la cuota previa para que la interfaz pueda
+mostrar la mejora de forma honesta:
+
+```bash
+curl -s http://localhost:8080/api/v1/events/784926067675947008
+```
+
+```json
+{
+  "id": "784926067675947008",
+  "name": "Bélgica vs Egipto",
+  "phase": "group_stage",
+  "group": "G",
+  "settings": { "hasStatistics": true, "isBetBuilderEnabled": true },
+  "markets": [
+    {
+      "id": "0ML784926070830059520",
+      "marketType": { "id": "ML0" },
+      "name": "Resultado del partido (1X2)",
+      "selections": [
+        { "id": "0ML784926070830059520H", "name": "Bélgica", "odds": 1.70, "isDisabled": false, "originalOdds": 1.56 },
+        { "id": "0ML784926070830059520D", "name": "Empate",  "odds": 4.17, "isDisabled": false },
+        { "id": "0ML784926070830059520A", "name": "Egipto",  "odds": 5.30, "isDisabled": false }
+      ]
+    }
+  ]
+}
+```
+
+Tres precisiones sobre la forma del campo:
+
+- **Se omite por completo cuando no hay mejora**, nunca se envía como `null`: la ausencia
+  del campo ya significa «sin promoción». Es el mismo criterio aplicado a `group`.
+- **`odds` es siempre la cuota vigente.** La valoración usa ese valor y ningún otro, de
+  modo que la promoción y el importe pagado no pueden discrepar. `originalOdds` es
+  información para mostrar, jamás un valor de cálculo.
+- **Aparece en las dos superficies**: en el detalle del evento y en `selections` de
+  `POST /betslip/calculate` (paso 6), que es de donde el cupón lo lee.
+
+**9. Colocación de la apuesta (requiere JWT)**
 
 La cabecera `Idempotency-Key` es **opcional**; enviarla activa la deduplicación.
 
@@ -350,7 +471,7 @@ HTTP `201 Created`:
 }
 ```
 
-**7. Réplica de la misma clave de idempotencia**
+**10. Réplica de la misma clave de idempotencia**
 
 Repetir exactamente la misma solicitud con la misma `Idempotency-Key` devuelve HTTP
 `200 OK` con la cabecera `Idempotent-Replay: true`, **el mismo `betId`** y **sin un
@@ -371,7 +492,7 @@ Idempotent-Replay: true
 
 El saldo permanece en `900.00` y `GET /api/v1/bets` sigue mostrando **una sola** apuesta.
 
-**8. Saldo insuficiente**
+**11. Saldo insuficiente**
 
 ```bash
 curl -s -X POST http://localhost:8080/api/v1/betslip/place \
@@ -401,7 +522,7 @@ se modifica:
 }
 ```
 
-**9. Saldo e historial**
+**12. Saldo e historial**
 
 ```bash
 curl -s http://localhost:8080/api/v1/balance -H "Authorization: Bearer $TOKEN"
@@ -445,8 +566,16 @@ en carrusel, y el cupón de apuestas.
 Existe por una razón concreta: es la prueba de que la metadata que expone la API
 **alcanza para construir la interfaz**. `settings.hasStatistics` e
 `settings.isBetBuilderEnabled` son las insignias de la tarjeta; `marketType.id` es la
-etiqueta junto al título del mercado, que es el identificador con el que una UI real
-decide tratamientos especiales como Super Cuota.
+etiqueta junto al título del mercado, y es el identificador estable con el que una UI real
+agrupa u ordena mercados sin depender de su nombre visible.
+
+**Super Cuota no es metadata de interfaz**, y conviene no confundirla con lo anterior: es
+una cuota realmente mejorada que viaja en el propio dato de la selección. El cliente
+dibuja su insignia cuando la selección trae `originalOdds`, y muestra ambos números —la
+anterior tachada y la vigente— sin decidir nada por su cuenta. El interruptor **Bet
+Builder** del cupón es el otro añadido visible: al activarlo, el cupón envía
+`isBetBuilder: true` y la API acepta la combinada del mismo evento, o la rechaza con
+`BET_BUILDER_NOT_AVAILABLE` si ese partido no la admite.
 
 | Qué hace | Endpoint que ejercita |
 |---|---|
@@ -472,7 +601,9 @@ Tres decisiones que conviene explicar:
 - **Las reglas las decide el servidor.** El cliente permite agregar al cupón dos
   selecciones del mismo evento a propósito, para que la API responda con su
   `SAME_EVENT_COMBO` y el error tipado se vea donde corresponde, en lugar de quedar
-  escondido tras un botón deshabilitado.
+  escondido tras un botón deshabilitado. El interruptor **Bet Builder** sigue el mismo
+  criterio: el cliente sólo declara la intención enviando `isBetBuilder`, y es la API la
+  que decide si ese evento la admite.
 - **No recalcula nada.** Cuota combinada y ganancia potencial se muestran tal como
   llegan de `calculate`. Multiplicarlas en el navegador es la forma habitual de que la
   interfaz termine mostrando un número distinto al de la apuesta que acaba de registrar.
@@ -509,7 +640,8 @@ los logs, de modo que un fallo reportado por un usuario se puede localizar de in
 | `METHOD_NOT_ALLOWED` | 405 | Método no admitido en una ruta existente (incluye cabecera `Allow`) |
 | `INSUFFICIENT_FUNDS` | 409 | Saldo insuficiente; la apuesta se registra como `rejected` |
 | `IDEMPOTENCY_KEY_REUSED` | 409 | Clave reutilizada con un contenido distinto |
-| `SAME_EVENT_COMBO` | 422 | Dos selecciones del mismo evento en una combinada |
+| `SAME_EVENT_COMBO` | 422 | Dos selecciones del mismo evento en una combinada, **sin** activar `isBetBuilder` |
+| `BET_BUILDER_NOT_AVAILABLE` | 422 | Se activó `isBetBuilder`, pero alguno de los eventos repetidos no lo admite |
 | `STAKE_OUT_OF_RANGE` | 422 | Monto fuera de `[BETSLIP_MIN_STAKE_AMOUNT, BETSLIP_MAX_STAKE_AMOUNT]` |
 | `DUPLICATE_SELECTION` | 422 | La misma selección repetida |
 | `TOO_MANY_SELECTIONS` | 422 | Se superó `BETSLIP_MAX_SELECTIONS` |
@@ -617,7 +749,7 @@ internal/
   platform/            config · logging (slog JSON) · id (ULID)
 api/                   openapi.yaml + Swagger UI embebido (go:embed)
 scripts/               deploy-aws.sh · destroy-aws.sh · smoke.sh
-docs/adr/              Los diez ADR
+docs/adr/              Los ADR de decisiones de arquitectura
 ```
 
 ### Qué abstrae Gin y qué hay debajo
@@ -678,6 +810,7 @@ evaluadas, decisión y consecuencias.
 | [0009](docs/adr/0009-publicacion-de-eventos-diferida.md) | Publicación de eventos diferida | EventBridge/SNS documentado como mejora futura, no implementado |
 | [0010](docs/adr/0010-cliente-web-y-swagger-ui-embebidos.md) | Cliente web y Swagger UI embebidos | Dependencias vendorizadas y servidas por el binario: sin CDN y sin etapa de compilación |
 | [0011](docs/adr/0011-rol-oidc-de-github-actions.md) | Rol OIDC de GitHub Actions para el despliegue | Credenciales federadas de vida corta en lugar de una clave de IAM de larga vida en un repositorio público |
+| [0012](docs/adr/0012-bet-builder-explicito-y-datos-de-demostracion.md) | Bet Builder explícito y datos de demostración | Activación obligatoria del cliente más capacidad del evento; superposiciones autoradas con `data.json` intacto |
 
 ---
 
@@ -1096,6 +1229,42 @@ modificar: **24 eventos**, **191 mercados**, partidos del 11 al 24 de junio de 2
 puede alcanzar archivos fuera del directorio de su propio paquete; los bytes son los
 mismos.
 
+**`data.json` no se modificó en ningún momento, y esa es una decisión deliberada.** Es el
+material de referencia del reto: mantenerlo idéntico permite compararlo byte a byte con lo
+recibido. Todo dato que este servicio agrega vive **fuera** de ese archivo, en mapas de Go
+que se aplican después de decodificarlo, con su procedencia escrita en el propio archivo
+que los contiene.
+
+### Datos autorados para la demostración: Bet Builder y Super Cuota
+
+Además del mapa de grupos, hay **dos superposiciones autoradas** en
+`internal/adapters/memory/seed/`. Ninguna proviene del conjunto de datos, y ambas existen
+por una razón concreta: sin ellas, las funcionalidades que sostienen no se pueden
+demostrar contra el catálogo real.
+
+| Archivo | Qué agrega | Por qué existe |
+|---|---|---|
+| [`superodds.go`](internal/adapters/memory/seed/superodds.go) | Cinco selecciones reales con cuota mejorada, en cinco partidos distintos | `data.json` **no trae ninguna señal de promoción ni de cuota mejorada**. Sin este mapa, Super Cuota no tiene nada que mostrar |
+| [`betbuilder.go`](internal/adapters/memory/seed/betbuilder.go) | Dos eventos —*Catar vs Suiza* y *Haití vs Escocia*— tratados como no aptos para Bet Builder | **Los 24 eventos de `data.json` traen `IsBetBuilderEnabled` en `true`.** Sin al menos un evento deshabilitado, `BET_BUILDER_NOT_AVAILABLE` es una rama que ninguna solicitud real puede alcanzar, y la puerta del Bet Builder no se puede demostrar de extremo a extremo |
+
+**Dicho sin rodeos: esos dos eventos deshabilitados y esas cinco cuotas mejoradas son
+datos inventados para la demostración.** En producción ambas señales llegarían del
+proveedor de datos —la capacidad de Bet Builder por evento y las cuotas promocionales son
+decisiones de trading, no del servicio—. Al vivir en el adaptador de memoria, sustituirlas
+por un origen real es cambiar de adaptador, no de dominio.
+
+Se aplican **después** de decodificar el archivo, en `loader.go`, de modo que el JSON de
+origen queda intacto y la diferencia entre lo recibido y lo servido se lee en dos archivos
+de Go comentados en lugar de esconderse dentro de miles de líneas de JSON. Siguen el mismo
+patrón que `groups.go` ya había establecido: dato autorado, confinado a un archivo, con su
+procedencia en su comentario de cabecera y sostenido por pruebas guardianas —un
+identificador que deje de corresponder a un dato real, o una «mejora» que empeore la
+cuota, hacen fallar la suite—. Las cinco selecciones mejoradas y los dos eventos
+deshabilitados no comparten ningún partido, y una prueba lo mantiene así.
+
+El razonamiento completo, junto con el de la activación explícita, está en
+[ADR-0012](docs/adr/0012-bet-builder-explicito-y-datos-de-demostracion.md).
+
 ### Fase y grupo: dato verificado, no supuesto
 
 `data.json` **no contiene ninguna señal de fase ni de grupo**. El mapa de
@@ -1163,7 +1332,13 @@ presente en la fuente. La respuesta refleja el dato real.
 
 [![CI](https://github.com/JulioCMax/apuesta-total-code-challenge/actions/workflows/ci.yml/badge.svg)](https://github.com/JulioCMax/apuesta-total-code-challenge/actions/workflows/ci.yml)
 
-**178 funciones de prueba en 42 archivos**, en cuatro niveles.
+**232 funciones de prueba en 47 archivos**, en cuatro niveles. La cifra se comprueba sin
+confiar en ella:
+
+```bash
+grep -rh '^func Test' --include='*_test.go' . | wc -l   # funciones
+find . -name '*_test.go' -not -path './.git/*' | wc -l  # archivos
+```
 
 ```bash
 go test ./...              # Suite completa
@@ -1191,7 +1366,7 @@ go test -race ./internal/adapters/dynamo/...
 
 | Nivel | Ubicación | Qué prueba realmente |
 |---|---|---|
-| Dominio | `internal/domain/` | Reglas de negocio puras: redondeo en los límites de medio céntimo (`1.005`, `2.675`, `152.495`), rechazo de combinada del mismo evento, límites del monto, cuota combinada como producto redondeado |
+| Dominio | `internal/domain/` | Reglas de negocio puras: redondeo en los límites de medio céntimo (`1.005`, `2.675`, `152.495`), rechazo de combinada del mismo evento, la excepción del Bet Builder con sus dos condiciones —incluida la verificación de **cada** evento repetido, no sólo del primero—, límites del monto, cuota combinada como producto redondeado |
 | Aplicación | `internal/application/` | Casos de uso contra dobles de prueba: resolución de selecciones, mapeo de errores, réplica idempotente y **ausencia de condiciones de carrera dado un puerto atómico** |
 | Integración | `internal/adapters/dynamo/` | **La demostración real de concurrencia**: 12 goroutines contra `amazon/dynamodb-local`, con transacciones y condiciones auténticas |
 | HTTP | `internal/adapters/http/` | Router real con `httptest`: guardia JWT, forma idéntica del envoltorio de error en todos los códigos, límite de tasa con clave `RemoteAddr` y nunca `X-Forwarded-For` |
@@ -1340,7 +1515,8 @@ compañero no puede deducir del diff.
       <https://qjdzac3mg6.execute-api.us-east-1.amazonaws.com>
 - [x] `docker compose up --build` levanta todo el entorno con un solo comando
 - [x] README en español con inicio rápido, endpoints, variables de entorno y decisiones
-- [x] Diez ADR documentando cada decisión de arquitectura
+- [x] Doce ADR documentando cada decisión de arquitectura, incluida la del Bet Builder
+      explícito y la procedencia de los datos autorados de demostración
 - [x] Diagrama de arquitectura versionado, con su fuente editable
 - [x] OpenAPI 3 y Swagger UI embebidos, funcionales sin conexión
 - [x] Cliente web embebido en `/app` que consume la propia API pública, con la prueba

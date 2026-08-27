@@ -61,6 +61,12 @@ func TestWrite_MapsTypedDomainErrorsToTheirDocumentedStatusAndCode(t *testing.T)
 		wantCode   string
 	}{
 		{"same event combo", domainbetslip.ErrSameEventCombo{EventID: "evt-1"}, http.StatusUnprocessableEntity, "SAME_EVENT_COMBO"},
+		// The mandatory Phase 2 gap: opting into Bet Builder for an event
+		// whose Bet Builder is disabled must classify distinctly from a
+		// no-opt-in same-event combo, through the same single envelope
+		// (design.md's apperror.Classify table; domain/betslip.
+		// ErrBetBuilderNotAvailable).
+		{"bet builder not available", domainbetslip.ErrBetBuilderNotAvailable{EventID: "evt-1"}, http.StatusUnprocessableEntity, "BET_BUILDER_NOT_AVAILABLE"},
 		{"stake out of range", domainbetslip.StakeOutOfRangeError{Min: minStake, Max: maxStake, Got: stake}, http.StatusUnprocessableEntity, "STAKE_OUT_OF_RANGE"},
 		{"selection not found", domainbetslip.ErrSelectionNotFound{SelectionID: "sel-1"}, http.StatusUnprocessableEntity, "SELECTION_NOT_FOUND"},
 		{"duplicate selection", domainbetslip.ErrDuplicateSelection, http.StatusUnprocessableEntity, "DUPLICATE_SELECTION"},

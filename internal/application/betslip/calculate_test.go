@@ -105,6 +105,86 @@ func TestCalculate_ResponseCarriesConfiguredBounds(t *testing.T) {
 	require.Equal(t, bounds.Currency, result.Currency)
 }
 
+// TestCalculate_ThreadsIsBetBuilderIntoQuote proves CalculateCommand.
+// IsBetBuilder threads unchanged into BetSlip.AllowSameEventCombo,
+// allowing a same-event combo through when both the opt-in and the
+// event's own flag are true (spec: bet-slip-calculation/Bet Builder Flag
+// Threading (Calculate); design: Bet Builder rule).
+func TestCalculate_ThreadsIsBetBuilderIntoQuote(t *testing.T) {
+	sel1 := domainevent.SelectionRef{ID: "sel-1", EventID: "evt-1", Odds: mustOdds(t, "1.85"), EventBetBuilderEnabled: true}
+	sel2 := domainevent.SelectionRef{ID: "sel-2", EventID: "evt-1", Odds: mustOdds(t, "2.10"), EventBetBuilderEnabled: true}
+	catalog := newFakeCatalog(sel1, sel2)
+	uc := appbetslip.NewCalculate(catalog, defaultBoundsFixture(t))
+
+	result, err := uc.Execute(context.Background(), appbetslip.CalculateCommand{
+		SelectionIDs: []string{"sel-1", "sel-2"},
+		Stake:        mustMoney(t, "100.00"),
+		IsBetBuilder: true,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, result.Quote.Combo)
+}
+
+// TestCalculate_IsBetBuilderOmittedStillRejectsSameEventCombo proves the
+// default false value preserves the existing same-event rejection (spec:
+// bet-slip-calculation/Bet Builder Flag Threading (Calculate), "Field
+// omitted").
+func TestCalculate_IsBetBuilderOmittedStillRejectsSameEventCombo(t *testing.T) {
+	sel1 := domainevent.SelectionRef{ID: "sel-1", EventID: "evt-1", Odds: mustOdds(t, "1.85"), EventBetBuilderEnabled: true}
+	sel2 := domainevent.SelectionRef{ID: "sel-2", EventID: "evt-1", Odds: mustOdds(t, "2.10"), EventBetBuilderEnabled: true}
+	catalog := newFakeCatalog(sel1, sel2)
+	uc := appbetslip.NewCalculate(catalog, defaultBoundsFixture(t))
+
+	_, err := uc.Execute(context.Background(), appbetslip.CalculateCommand{
+		SelectionIDs: []string{"sel-1", "sel-2"},
+		Stake:        mustMoney(t, "100.00"),
+	})
+
+	var sameEvent domainbetslip.ErrSameEventCombo
+	require.ErrorAs(t, err, &sameEvent)
+}
+
+// TestCalculate_BoostedSelectionExposesOriginalOdds proves a resolved
+// selection carrying a Super Cuota boost echoes both Odds and OriginalOdds
+// (spec: bet-slip-calculation/Boosted Selection Exposes Original Odds).
+func TestCalculate_BoostedSelectionExposesOriginalOdds(t *testing.T) {
+	original := mustOdds(t, "1.47")
+	sel := domainevent.SelectionRef{ID: "sel-1", EventID: "evt-1", Odds: mustOdds(t, "1.60"), OriginalOdds: &original}
+	catalog := newFakeCatalog(sel)
+	uc := appbetslip.NewCalculate(catalog, defaultBoundsFixture(t))
+
+	result, err := uc.Execute(context.Background(), appbetslip.CalculateCommand{
+		SelectionIDs: []string{"sel-1"},
+		Stake:        mustMoney(t, "100.00"),
+	})
+
+	require.NoError(t, err)
+	require.Len(t, result.Selections, 1)
+	require.Equal(t, "1.60", result.Selections[0].Odds.String())
+	require.NotNil(t, result.Selections[0].OriginalOdds)
+	require.Equal(t, "1.47", result.Selections[0].OriginalOdds.String())
+}
+
+// TestCalculate_NonBoostedSelectionHasNoOriginalOdds proves a resolved
+// selection with no boost carries a nil OriginalOdds (spec: bet-slip-
+// calculation/Boosted Selection Exposes Original Odds, "Non-boosted
+// selection resolved").
+func TestCalculate_NonBoostedSelectionHasNoOriginalOdds(t *testing.T) {
+	sel := domainevent.SelectionRef{ID: "sel-1", EventID: "evt-1", Odds: mustOdds(t, "1.85")}
+	catalog := newFakeCatalog(sel)
+	uc := appbetslip.NewCalculate(catalog, defaultBoundsFixture(t))
+
+	result, err := uc.Execute(context.Background(), appbetslip.CalculateCommand{
+		SelectionIDs: []string{"sel-1"},
+		Stake:        mustMoney(t, "100.00"),
+	})
+
+	require.NoError(t, err)
+	require.Len(t, result.Selections, 1)
+	require.Nil(t, result.Selections[0].OriginalOdds)
+}
+
 // TestCalculate_RoundsPotentialReturnsAtHalfCentBoundary proves the
 // combined odds and potentialReturns computed through the full Calculate
 // flow match BetSlip.Quote's half-up rounding exactly, with no extra

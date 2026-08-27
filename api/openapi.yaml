@@ -301,6 +301,10 @@ paths:
         registro real ocurre en `POST /betslip/place`. Los límites de monto
         (`minStake`/`maxStake`) y la moneda provienen de la configuración del
         servidor, nunca de valores fijos en el cliente.
+
+        Para combinar dos selecciones del **mismo** evento hay que activar
+        `isBetBuilder` de forma explícita, y el evento debe admitirlo; el
+        detalle está en la descripción de ese campo.
       operationId: calculateBetSlip
       security: []
       requestBody:
@@ -309,14 +313,46 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BetSlipRequest"
-            example:
-              # Dos selecciones de eventos DISTINTOS: México vs Sudáfrica y
-              # EE.UU. vs Paraguay. Una combinada exige eventos distintos,
-              # así que este ejemplo es ejecutable tal cual desde /docs.
-              selectionIds:
-                - 0ML784926076341366984H
-                - 0ML784926073862533120H
-              stake: 100
+            examples:
+              eventosDistintos:
+                summary: Combinada corriente (dos eventos distintos)
+                description: >-
+                  México vs Sudáfrica y EE.UU. vs Paraguay. Una combinada
+                  corriente exige eventos distintos, así que este ejemplo es
+                  ejecutable tal cual desde /docs.
+                value:
+                  selectionIds:
+                    - 0ML784926076341366984H
+                    - 0ML784926073862533120H
+                  stake: 100
+              betBuilder:
+                summary: Bet Builder aceptado (dos selecciones de Bélgica vs Egipto)
+                description: >-
+                  Ganador del partido y «ambos equipos anotan» del mismo
+                  evento, que admite Bet Builder. La primera selección lleva
+                  Super Cuota, de modo que la respuesta devuelve también su
+                  `originalOdds`. Sin `isBetBuilder`, esta misma solicitud
+                  respondería `422 SAME_EVENT_COMBO`.
+                value:
+                  selectionIds:
+                    - 0ML784926070830059520H
+                    - 0QA784926070830059559Q1714Q0
+                  stake: 100
+                  isBetBuilder: true
+              betBuilderNoDisponible:
+                summary: Bet Builder rechazado (Catar vs Suiza no lo admite)
+                description: >-
+                  Dos selecciones de un evento cuyo
+                  `settings.isBetBuilderEnabled` es `false`. Responde
+                  `422 BET_BUILDER_NOT_AVAILABLE`, no `SAME_EVENT_COMBO`:
+                  quien activó el interruptor merece saber por qué se le
+                  rechaza.
+                value:
+                  selectionIds:
+                    - 0ML784926076341379076A
+                    - 0QA784926076341379115Q1714Q0
+                  stake: 100
+                  isBetBuilder: true
       responses:
         "200":
           description: Cotización calculada correctamente.
@@ -346,6 +382,10 @@ paths:
         segura: una repetición con la misma clave devuelve el resultado ya
         registrado (200, con el encabezado `Idempotent-Replay: true`) en
         lugar de crear una segunda apuesta.
+
+        Acepta el mismo `isBetBuilder` que `POST /betslip/calculate` y aplica
+        exactamente las mismas reglas, de modo que un boleto que calculó no
+        se rechaza al registrarse.
       operationId: placeBet
       security:
         - bearerAuth: []
@@ -366,10 +406,24 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/BetSlipRequest"
-            example:
-              selectionIds:
-                - 0ML784926076341366984H
-              stake: 100
+            examples:
+              sencilla:
+                summary: Apuesta sencilla
+                value:
+                  selectionIds:
+                    - 0ML784926076341366984H
+                  stake: 100
+              betBuilder:
+                summary: Bet Builder (dos selecciones de Bélgica vs Egipto)
+                description: >-
+                  El mismo boleto del ejemplo `betBuilder` de
+                  `POST /betslip/calculate`, ahora registrado.
+                value:
+                  selectionIds:
+                    - 0ML784926070830059520H
+                    - 0QA784926070830059559Q1714Q0
+                  stake: 100
+                  isBetBuilder: true
       responses:
         "201":
           description: Apuesta registrada y aceptada.
@@ -606,6 +660,15 @@ components:
                   details:
                     eventId: "784926067864698880"
                 requestId: a1b2c3d4e5f6a7b8
+            betBuilderNoDisponible:
+              summary: Se activó `isBetBuilder` sobre un evento que no lo admite
+              value:
+                error:
+                  code: BET_BUILDER_NOT_AVAILABLE
+                  message: El Bet Builder no está disponible para este evento.
+                  details:
+                    eventId: "784926068556738560"
+                requestId: a1b2c3d4e5f6a7b8
             fueraDeRango:
               summary: Monto fuera del rango permitido
               value:
@@ -692,6 +755,7 @@ components:
             - INSUFFICIENT_FUNDS
             - IDEMPOTENCY_KEY_REUSED
             - SAME_EVENT_COMBO
+            - BET_BUILDER_NOT_AVAILABLE
             - STAKE_OUT_OF_RANGE
             - DUPLICATE_SELECTION
             - TOO_MANY_SELECTIONS
@@ -779,6 +843,17 @@ components:
           $ref: "#/components/schemas/Odds"
         isDisabled:
           type: boolean
+        originalOdds:
+          allOf:
+            - $ref: "#/components/schemas/Odds"
+          description: >-
+            Cuota previa a la mejora, presente **solo** en una selección con
+            Super Cuota. En ese caso `odds` es la cuota mejorada y este campo
+            conserva la original, de modo que la interfaz pueda mostrar la
+            mejora de forma honesta («antes 1.56, ahora 1.70»). Cuando no hay
+            mejora, el campo se omite por completo; nunca se envía como
+            `null`.
+          example: 1.56
 
     MarketResponse:
       type: object
@@ -882,6 +957,25 @@ components:
             Monto de la apuesta. Se aplica íntegro a cada apuesta sencilla y
             a la combinada (si la hay), no se divide entre selecciones.
           example: 100
+        isBetBuilder:
+          type: boolean
+          default: false
+          description: >-
+            Activación explícita del Bet Builder, la única excepción a la
+            regla que prohíbe combinar dos selecciones del mismo evento.
+            Omitirlo equivale a `false` y conserva esa regla intacta.
+
+            Enviarlo en `true` **no** basta por sí solo: cada evento
+            repetido en el boleto debe además tener
+            `settings.isBetBuilderEnabled` en `true`. Si alguno no lo tiene,
+            la respuesta es `422 BET_BUILDER_NOT_AVAILABLE` con el
+            identificador del primer evento que lo impide, en el orden en que
+            llegaron las selecciones.
+
+            Debe reflejar una acción deliberada de la persona que apuesta
+            (el interruptor «Bet Builder» del cupón), nunca deducirse de que
+            el boleto contenga dos selecciones del mismo evento.
+          example: false
 
     ResolvedSelectionResponse:
       type: object
@@ -893,6 +987,15 @@ components:
           type: string
         odds:
           $ref: "#/components/schemas/Odds"
+        originalOdds:
+          allOf:
+            - $ref: "#/components/schemas/Odds"
+          description: >-
+            Cuota previa a la mejora, presente **solo** en una selección con
+            Super Cuota; `odds` ya es la cuota mejorada y es la que se usa
+            para valorar la apuesta. Se omite por completo cuando no hay
+            mejora; nunca se envía como `null`.
+          example: 1.56
 
     SingleResponse:
       type: object

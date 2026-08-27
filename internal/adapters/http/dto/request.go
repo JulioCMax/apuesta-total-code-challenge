@@ -25,6 +25,14 @@ type LoginRequest struct {
 type BetSlipRequest struct {
 	SelectionIDs []string    `json:"selectionIds" binding:"required,min=1,dive,required"`
 	Stake        json.Number `json:"stake" binding:"required"`
+
+	// IsBetBuilder is the caller's explicit Bet Builder opt-in, defaulting
+	// to false when omitted (Go's zero value for bool needs no binding
+	// tag). It MUST only ever be sent true when the caller has explicitly
+	// enabled that affordance in the UI, never inferred from selecting 2+
+	// same-event selections (spec: bet-slip-calculation/Bet Builder
+	// Explicit UI Affordance).
+	IsBetBuilder bool `json:"isBetBuilder"`
 }
 
 // Stake magnitude bounds. These are NOT the business stake bounds

@@ -28,8 +28,12 @@ export default {
     currency: { type: String, default: 'PEN' },
     probing: { type: Boolean, default: false },
     probeResults: { type: Array, default: null },
+    // Explicit Bet Builder opt-in (spec: bet-slip-calculation/Bet Builder
+    // Explicit UI Affordance). Only this toggle — never the slip's own
+    // contents — decides whether isBetBuilder is ever sent true.
+    betBuilder: { type: Boolean, default: false },
   },
-  emits: ['close', 'remove', 'clear', 'update:stake', 'place', 'probe'],
+  emits: ['close', 'remove', 'clear', 'update:stake', 'update:betBuilder', 'place', 'probe'],
   computed: {
     betType() {
       return this.legs.length >= 2 ? 'Combinada' : 'Simple';
@@ -70,6 +74,9 @@ export default {
     },
     onStake(event) {
       this.$emit('update:stake', event.target.value);
+    },
+    onBetBuilder(event) {
+      this.$emit('update:betBuilder', event.target.checked);
     },
   },
   template: `
@@ -119,6 +126,14 @@ export default {
               <button class="leg-remove" type="button" aria-label="Quitar" @click="$emit('remove', leg.selectionId)">×</button>
             </div>
 
+            <label class="bb-toggle">
+              <input type="checkbox" :checked="betBuilder" @change="onBetBuilder">
+              <span>
+                <strong>Bet Builder</strong>
+                <small>Combiná selecciones del mismo partido cuando el evento lo permita.</small>
+              </span>
+            </label>
+
             <div class="stake-row">
               <div>
                 <div class="stake-label">Monto de la apuesta</div>
@@ -140,6 +155,9 @@ export default {
               <span class="api-error-message">{{ quoteError.message }}</span>
               <span v-if="quoteError.details && quoteError.details.min !== undefined" class="api-error-detail">
                 Permitido: {{ money(quoteError.details.min, currency) }} – {{ money(quoteError.details.max, currency) }}.
+              </span>
+              <span v-if="quoteError.code === 'SAME_EVENT_COMBO' && !betBuilder" class="api-error-detail">
+                Activá Bet Builder arriba para combinar selecciones del mismo partido cuando el evento lo permita.
               </span>
               <span class="api-error-code" :title="'Código de error de la API: ' + quoteError.code">{{ quoteError.code }}</span>
             </div>

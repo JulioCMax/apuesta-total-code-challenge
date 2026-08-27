@@ -462,6 +462,18 @@ button { font: inherit; color: inherit; }
 .badge-bb { background: var(--at-red-bg); color: var(--at-red); }
 .badge-sc { background: var(--at-blue-bg); color: var(--at-blue); }
 
+/* Super Cuota: a boosted selection's odd button carries this pill plus a
+   struck-through original value (see .odd-original below). Named
+   badge-boost, distinct from .badge-sc above (the MarketType id badge),
+   so the two unrelated meanings never share one class. */
+.badge-boost {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  background: var(--at-yellow);
+  color: var(--at-ink);
+}
+
 .chevron {
   grid-column: 3;
   grid-row: 1 / span 2;
@@ -523,6 +535,7 @@ button { font: inherit; color: inherit; }
 .odds-row.cols-4 { grid-template-columns: repeat(2, 1fr); }
 
 .odd {
+  position: relative;
   border: 0;
   background: var(--at-surface-alt);
   border-radius: var(--at-radius-sm);
@@ -535,7 +548,24 @@ button { font: inherit; color: inherit; }
 
 .odd:hover:not(:disabled) { background: #e9eaee; }
 
+.odd-value-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+}
+
 .odd-value { font-size: 15px; font-weight: 700; }
+
+/* Super Cuota: the pre-boost value, struck through, beside the boosted
+   one — never hidden, so the improvement is honest rather than a bare
+   number with no context (spec: events-catalog/Selection Exposes
+   Original Odds When Boosted). */
+.odd-original {
+  font-size: 10.5px;
+  color: var(--at-faint);
+  text-decoration: line-through;
+}
 
 .odd-label {
   font-size: 11.5px;
@@ -753,6 +783,28 @@ button { font: inherit; color: inherit; }
 }
 
 .leg-remove:hover { color: var(--at-red); }
+
+/* Explicit Bet Builder opt-in toggle (spec: bet-slip-calculation/Bet
+   Builder Explicit UI Affordance). Deliberately styled like a plain
+   labelled checkbox, not a disabled-until-relevant control: the same-event
+   rule is always enforced server-side regardless of this toggle's state. */
+.bb-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 0 2px;
+  cursor: pointer;
+}
+
+.bb-toggle input { margin-top: 2px; }
+
+.bb-toggle span {
+  display: flex;
+  flex-direction: column;
+  font-size: 12.5px;
+}
+
+.bb-toggle small { color: var(--at-muted); font-size: 11px; }
 
 .stake-row {
   display: grid;

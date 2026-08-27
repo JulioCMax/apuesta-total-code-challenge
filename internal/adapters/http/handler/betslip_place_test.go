@@ -250,6 +250,56 @@ func TestPlace_ReplayReturns200WithHeader(t *testing.T) {
 	require.InDelta(t, 900.00, body["balanceAfter"], 0.001, "a replay must never apply a second debit")
 }
 
+// TestPlace_BetBuilderOptInAllowsSameEventCombo proves isBetBuilder
+// threads through POST /betslip/place exactly like /calculate, allowing a
+// same-event combo to reach the repository when the event's own flag is
+// enabled (spec: bet-slip-placement/Bet Builder Flag Threading (Place)).
+func TestPlace_BetBuilderOptInAllowsSameEventCombo(t *testing.T) {
+	catalog := newFakeCatalog(
+		domainevent.SelectionRef{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.85), EventBetBuilderEnabled: true},
+		domainevent.SelectionRef{ID: "s2", EventID: "e1", Odds: mustOdds(t, 2.10), EventBetBuilderEnabled: true},
+	)
+	repo := newFakeBetRepo(mustMoney(t, 1000))
+	verifier := security.NewJWT("test-secret", time.Hour)
+	r := newPlaceRouter(t, catalog, repo, verifier, testBounds(t))
+
+	req := httptest.NewRequest(http.MethodPost, "/betslip/place", jsonBody(`{"selectionIds":["s1","s2"],"stake":100,"isBetBuilder":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenFor(t, verifier, "user-1"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusCreated, w.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "combo", body["type"])
+}
+
+// TestPlace_BetBuilderOptInOnDisabledEventReturns422BetBuilderNotAvailable
+// closes the same Phase 2 gap at the placement boundary: a refused Bet
+// Builder request must never reach the repository.
+func TestPlace_BetBuilderOptInOnDisabledEventReturns422BetBuilderNotAvailable(t *testing.T) {
+	catalog := newFakeCatalog(
+		domainevent.SelectionRef{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.85), EventBetBuilderEnabled: false},
+		domainevent.SelectionRef{ID: "s2", EventID: "e1", Odds: mustOdds(t, 2.10), EventBetBuilderEnabled: false},
+	)
+	repo := newFakeBetRepo(mustMoney(t, 1000))
+	verifier := security.NewJWT("test-secret", time.Hour)
+	r := newPlaceRouter(t, catalog, repo, verifier, testBounds(t))
+
+	req := httptest.NewRequest(http.MethodPost, "/betslip/place", jsonBody(`{"selectionIds":["s1","s2"],"stake":100,"isBetBuilder":true}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tokenFor(t, verifier, "user-1"))
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusUnprocessableEntity, w.Code)
+	require.Equal(t, 0, repo.placedCount, "a refused Bet Builder placement must never reach the repository")
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Equal(t, "BET_BUILDER_NOT_AVAILABLE", body["error"].(map[string]any)["code"])
+}
+
 // TestPlace_AbsurdStakeMagnitudeReturns400WithoutPlacing proves the
 // placement endpoint applies the exact same request-boundary stake
 // magnitude guard as calculate, and never reaches the repository.

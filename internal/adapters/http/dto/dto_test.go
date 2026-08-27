@@ -150,6 +150,113 @@ func TestEventDetailFromDomain_ExposesMarketTypeIdAndEventLevelSettings(t *testi
 	require.Equal(t, string(domainevent.MarketTypeMoneyline), detail.Markets[0].MarketType.ID)
 }
 
+// TestBetSlipRequest_IsBetBuilder_DefaultsFalseWhenOmitted proves the
+// request DTO defaults isBetBuilder to false when the caller omits it
+// (spec: bet-slip-calculation/Bet Builder Flag Threading (Calculate),
+// "Field omitted").
+func TestBetSlipRequest_IsBetBuilder_DefaultsFalseWhenOmitted(t *testing.T) {
+	var req dto.BetSlipRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"selectionIds":["s1"],"stake":100}`), &req))
+
+	require.False(t, req.IsBetBuilder)
+}
+
+// TestBetSlipRequest_IsBetBuilder_ParsesExplicitTrue is the triangulation
+// case for the field above.
+func TestBetSlipRequest_IsBetBuilder_ParsesExplicitTrue(t *testing.T) {
+	var req dto.BetSlipRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"selectionIds":["s1"],"stake":100,"isBetBuilder":true}`), &req))
+
+	require.True(t, req.IsBetBuilder)
+}
+
+// TestEventDetailFromDomain_OriginalOddsOmittedWhenAbsent proves a
+// non-boosted selection's JSON omits originalOdds entirely rather than
+// sending null (spec: events-catalog/Selection Exposes Original Odds When
+// Boosted, "Non-curated selection loaded").
+func TestEventDetailFromDomain_OriginalOddsOmittedWhenAbsent(t *testing.T) {
+	e := domainevent.Event{
+		ID: "evt-1",
+		Markets: []domainevent.Market{
+			{ID: "m1", TypeID: domainevent.MarketTypeMoneyline, Selections: []domainevent.Selection{
+				{ID: "s1", Odds: mustOdds(t, 1.85)},
+			}},
+		},
+	}
+
+	raw, err := json.Marshal(dto.EventDetailFromDomain(e))
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), `"originalOdds"`)
+}
+
+// TestEventDetailFromDomain_BoostedSelectionIncludesOriginalOdds is the
+// triangulation case: a boosted selection MUST render both odds and a
+// distinct originalOdds (spec: events-catalog/Selection Exposes Original
+// Odds When Boosted, "Curated Super Cuota selection loaded").
+func TestEventDetailFromDomain_BoostedSelectionIncludesOriginalOdds(t *testing.T) {
+	original := mustOdds(t, 1.47)
+	e := domainevent.Event{
+		ID: "evt-1",
+		Markets: []domainevent.Market{
+			{ID: "m1", TypeID: domainevent.MarketTypeMoneyline, Selections: []domainevent.Selection{
+				{ID: "s1", Odds: mustOdds(t, 1.60), OriginalOdds: &original},
+			}},
+		},
+	}
+
+	detail := dto.EventDetailFromDomain(e)
+	require.NotNil(t, detail.Markets[0].Selections[0].OriginalOdds)
+	require.Equal(t, "1.47", detail.Markets[0].Selections[0].OriginalOdds.String())
+
+	raw, err := json.Marshal(detail)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"originalOdds":1.47`)
+}
+
+// TestCalculateResponseFromDomain_BoostedSelectionExposesOriginalOdds
+// proves a resolved selection carrying a Super Cuota boost renders both
+// values distinctly in the calculate response (spec: bet-slip-calculation/
+// Boosted Selection Exposes Original Odds).
+func TestCalculateResponseFromDomain_BoostedSelectionExposesOriginalOdds(t *testing.T) {
+	original := mustOdds(t, 1.47)
+	result := appbetslip.CalculateResult{
+		MinStake: mustMoney(t, 1), MaxStake: mustMoney(t, 10000), Currency: "PEN",
+		Stake:      mustMoney(t, 100),
+		Selections: []appbetslip.ResolvedSelection{{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.60), OriginalOdds: &original}},
+		Quote: domainbetslip.Quote{
+			Singles: []domainbetslip.Leg{{SelectionIDs: []string{"s1"}, Odds: mustOdds(t, 1.60), PotentialReturns: mustMoney(t, 160)}},
+		},
+	}
+
+	resp := dto.CalculateResponseFromDomain(result)
+
+	require.NotNil(t, resp.Selections[0].OriginalOdds)
+	require.Equal(t, "1.47", resp.Selections[0].OriginalOdds.String())
+
+	raw, err := json.Marshal(resp)
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"originalOdds":1.47`)
+}
+
+// TestCalculateResponseFromDomain_NonBoostedSelectionOmitsOriginalOdds is
+// the companion case: a non-boosted selection's originalOdds must be
+// absent from the JSON, never null (spec: bet-slip-calculation/Boosted
+// Selection Exposes Original Odds, "Non-boosted selection resolved").
+func TestCalculateResponseFromDomain_NonBoostedSelectionOmitsOriginalOdds(t *testing.T) {
+	result := appbetslip.CalculateResult{
+		MinStake: mustMoney(t, 1), MaxStake: mustMoney(t, 10000), Currency: "PEN",
+		Stake:      mustMoney(t, 100),
+		Selections: []appbetslip.ResolvedSelection{{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.85)}},
+		Quote: domainbetslip.Quote{
+			Singles: []domainbetslip.Leg{{SelectionIDs: []string{"s1"}, Odds: mustOdds(t, 1.85), PotentialReturns: mustMoney(t, 185)}},
+		},
+	}
+
+	raw, err := json.Marshal(dto.CalculateResponseFromDomain(result))
+	require.NoError(t, err)
+	require.NotContains(t, string(raw), `"originalOdds"`)
+}
+
 // TestCalculateResponseFromDomain_SingleHasNoCombo proves a one-selection
 // Quote maps to exactly one Single and a nil Combo (spec: bet-slip-
 // calculation/Single and Combo Bet Generation).
