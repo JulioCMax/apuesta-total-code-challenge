@@ -89,7 +89,7 @@ export default {
             money left their balance.
           -->
           <div v-if="placeResult" class="api-ok">
-            <span class="api-error-code">APUESTA {{ placeResult.status.toUpperCase() }}</span>
+            <span class="api-ok-title">Apuesta {{ placeResult.status === 'accepted' ? 'aceptada' : placeResult.status }}</span>
             <span>
               {{ placeResult.type }} por {{ money(placeResult.stake, currency) }} ·
               cuota {{ fmtOdds(placeResult.combinedOdds) }} ·
@@ -98,7 +98,7 @@ export default {
             <span v-if="placeResult.balanceAfter !== null">
               Saldo restante: {{ money(placeResult.balanceAfter, currency) }}
             </span>
-            <span class="api-error-code" style="opacity:.6">ID {{ placeResult.betId }}</span>
+            <span class="api-ok-code" title="Identificador de la apuesta registrada">{{ placeResult.betId }}</span>
           </div>
 
           <p v-if="!legs.length && !placeResult" class="empty">
@@ -137,11 +137,11 @@ export default {
             </div>
 
             <div v-if="quoteError" class="api-error" style="margin-top:8px">
-              <span class="api-error-code">{{ quoteError.code }}</span>
-              <span>{{ quoteError.message }}</span>
-              <span v-if="quoteError.details && quoteError.details.min !== undefined">
+              <span class="api-error-message">{{ quoteError.message }}</span>
+              <span v-if="quoteError.details && quoteError.details.min !== undefined" class="api-error-detail">
                 Permitido: {{ money(quoteError.details.min, currency) }} – {{ money(quoteError.details.max, currency) }}.
               </span>
+              <span class="api-error-code" :title="'Código de error de la API: ' + quoteError.code">{{ quoteError.code }}</span>
             </div>
 
             <template v-if="quote && !quoteError">
@@ -173,12 +173,12 @@ export default {
             </template>
 
             <div v-if="placeError" class="api-error" style="margin-top:10px">
-              <span class="api-error-code">{{ placeError.code }}</span>
-              <span>{{ placeError.message }}</span>
-              <span v-if="placeError.details && placeError.details.balance !== undefined">
+              <span class="api-error-message">{{ placeError.message }}</span>
+              <span v-if="placeError.details && placeError.details.balance !== undefined" class="api-error-detail">
                 Saldo {{ money(placeError.details.balance, currency) }} ·
                 requerido {{ money(placeError.details.required, currency) }}.
               </span>
+              <span class="api-error-code" :title="'Código de error de la API: ' + placeError.code">{{ placeError.code }}</span>
             </div>
 
             <!--

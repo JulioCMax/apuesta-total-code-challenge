@@ -858,15 +858,38 @@ button { font: inherit; color: inherit; }
   font-size: 12.5px;
   color: #8c0d25;
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 
+/*
+ * The machine-readable code is kept, but subordinate.
+ *
+ * It is here so a reviewer can see that the rule was enforced by the API's
+ * typed error contract rather than by the client, which is worth showing.
+ * It is not here for the person placing the bet: nobody betting money
+ * should have to read SAME_EVENT_COMBO to find out what went wrong. The
+ * sentence leads; the code trails it as a quiet tag.
+ */
 .api-error-code {
-  font-size: 10.5px;
-  font-weight: 800;
-  letter-spacing: .4px;
-  opacity: .75;
+  justify-self: start;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: #a8546a;
+  background: rgba(255, 255, 255, .65);
+  border: 1px solid #f0cdd5;
+  border-radius: 3px;
+  padding: 1px 5px;
 }
+
+.api-error-message {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.api-error-detail { font-size: 12px; opacity: .85; }
 
 .api-ok {
   border: 1px solid #b9e2c9;
@@ -876,7 +899,26 @@ button { font: inherit; color: inherit; }
   font-size: 12.5px;
   color: #145c33;
   display: grid;
-  gap: 3px;
+  gap: 4px;
+}
+
+.api-ok-title {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* The bet id is a receipt: worth showing, not worth shouting. */
+.api-ok-code {
+  justify-self: start;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .3px;
+  color: #3f7a5c;
+  background: rgba(255, 255, 255, .65);
+  border: 1px solid #bfe0cd;
+  border-radius: 3px;
+  padding: 1px 5px;
 }
 
 /* --- login dialog ---------------------------------------------------------- */

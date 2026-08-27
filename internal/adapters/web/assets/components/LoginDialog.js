@@ -41,8 +41,8 @@ export default {
         </div>
 
         <div v-if="error" class="api-error">
-          <span class="api-error-code">{{ error.code }}</span>
-          <span>{{ error.message }}</span>
+          <span class="api-error-message">{{ error.message }}</span>
+          <span class="api-error-code" :title="'Código de error de la API: ' + error.code">{{ error.code }}</span>
         </div>
 
         <button class="btn-primary" type="submit" :disabled="pending">
