@@ -62,7 +62,8 @@ saldo refleja un único débito. Es el requisito de concurrencia hecho visible.
 10. [Mejora futura: publicación de eventos](#10-mejora-futura-publicación-de-eventos)
 11. [Límites conocidos y procedencia de los datos](#11-límites-conocidos-y-procedencia-de-los-datos)
 12. [Pruebas](#12-pruebas)
-13. [Checklist de entrega](#13-checklist-de-entrega)
+13. [Estrategia de control de versiones](#13-estrategia-de-control-de-versiones)
+14. [Checklist de entrega](#14-checklist-de-entrega)
 
 ---
 
@@ -1202,7 +1203,90 @@ git log --oneline --reverse --format='%s' | grep -E '^(test|feat)' | head -20
 
 ---
 
-## 13. Checklist de entrega
+## 13. Estrategia de control de versiones
+
+### Lo que hace este repositorio
+
+| | |
+|---|---|
+| Commits | 93 |
+| Fusiones | 0 — historial completamente lineal |
+| Ramas | una: `main` |
+| Commits con cuerpo explicativo | 75 de 93 (~77 palabras de media) |
+
+**Convención de mensajes**: [Conventional Commits](https://www.conventionalcommits.org/es/).
+Los tipos empleados son `feat` (31), `test` (25), `fix` (21), `docs` (9), `chore` (4),
+`refactor` (2) y `build` (1). Los **ámbitos son las capas de la arquitectura** —`domain`,
+`application`, `adapters`, `platform`— más `scripts`, `web` y `readme`, de modo que
+`git log --oneline --grep "^feat(domain)"` responde «qué se añadió al dominio» sin abrir
+un solo fichero.
+
+**El asunto dice qué; el cuerpo dice por qué.** Esa es la regla, y es la razón de que tres
+de cada cuatro commits tengan cuerpo. Un diff ya muestra perfectamente lo que cambió: lo
+que no puede mostrar es qué alternativa se descartó y qué se aceptó a cambio. El historial
+es además la única documentación que **no puede desincronizarse del código**, porque va
+atada al cambio que la produjo.
+
+**El desarrollo guiado por pruebas está en el historial, no sólo afirmado en este
+documento**:
+
+```
+test(domain): add RED spec for Money/Odds rounding
+feat(domain): add Money and Odds value objects
+test(domain): add RED spec for BetSlip.Quote
+feat(domain): add BetSlip.Quote and the Bet aggregate
+test(application): add RED spec for betslip place use case
+feat(application): add betslip place use case
+```
+
+La prueba que falla se registra **antes** que la implementación que la hace pasar. Es una
+afirmación verificable con `git log --reverse`, no una declaración de intenciones.
+
+**Una unidad de trabajo por commit**: código, sus pruebas y su documentación viajan
+juntos, y cada commit compila y pasa la suite **por sí solo**. Un commit que sólo funciona
+acompañado del siguiente no es una unidad revisable, es un fragmento.
+
+Comprobado recorriendo los **doce commits más recientes** con `go build ./...` y
+`go test -short ./...` en cada punto del historial: los doce pasan de forma aislada. La
+verificación se acota a esa ventana porque recorrer los noventa y tres tarda más de lo que
+aporta; el criterio, en cambio, se aplicó desde el primero.
+
+### Por qué lineal sobre `main` aquí
+
+Un autor, sin revisor y sin barreras de integración continua. En ese contexto, una rama
+por funcionalidad no protege nada: no hay nadie al otro lado que revise, y cada fusión
+sólo añade un commit de mezcla que estorba la lectura. Un historial lineal es además el
+artefacto más legible para quien evalúa: `git log --oneline` cuenta el proyecto entero en
+orden.
+
+### Lo que propondría en un equipo
+
+El contexto cambia en cuanto hay más de una persona, y la estrategia debería cambiar con
+él:
+
+- **Trunk-based con ramas cortas**: ramas de una o dos jornadas como máximo, siempre desde
+  `main`. Cuanto más vive una rama, más caro es su regreso.
+- **Pull requests pequeñas**, por debajo de unas 400 líneas. La calidad de una revisión cae
+  en picado con el tamaño del cambio: a partir de cierto punto se aprueba por cansancio.
+  Un cambio grande se parte en una cadena de PR encadenadas.
+- **Fusión con aplastado (squash)** hacia `main`, conservando el cuerpo del mensaje. Se
+  mantiene la linealidad de arriba sin obligar a nadie a limpiar su historial local.
+- **Protección de rama**: integración continua en verde y al menos una aprobación. Es la
+  barrera que aquí no existe, y es justamente lo que hace innecesarias las ramas en este
+  repositorio.
+- **Conventional Commits sostenido**, que es lo que permite generar el registro de cambios
+  y el versionado semántico de forma automática en lugar de a mano.
+- **Nada de gitflow**. Sus ramas `develop` y `release` resuelven versiones empaquetadas con
+  fechas de publicación; con despliegue continuo sólo añaden ceremonia y conflictos de
+  fusión.
+
+Lo único que **no** cambiaría al pasar a un equipo es la disciplina del cuerpo del mensaje.
+Es aún más valiosa con varias personas: el «por qué» de un cambio es exactamente lo que un
+compañero no puede deducir del diff.
+
+---
+
+## 14. Checklist de entrega
 
 - [x] Repositorio público con el código completo
 - [x] **Demostración desplegada y accesible**: aplicación web, Swagger UI y API en
