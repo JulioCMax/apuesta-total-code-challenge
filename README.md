@@ -672,7 +672,7 @@ evaluadas, decisión y consecuencias.
 | [0003](docs/adr/0003-debito-atomico-transactwriteitems.md) | Débito atómico con `TransactWriteItems` | Débito condicional y registro de la apuesta, todo o nada, en un solo viaje |
 | [0004](docs/adr/0004-despliegue-lambda-function-url.md) | Lambda ZIP arm64 con Function URL | 0 USD/mes; EKS descartado por su coste de ≈ 73 USD/mes |
 | [0005](docs/adr/0005-dinero-y-cuotas-con-decimal.md) | Dinero y cuotas con decimal exacto | Aritmética decimal y un único punto de redondeo en todo el código |
-| [0006](docs/adr/0006-sin-cache-y-sin-colas.md) | Sin caché y sin colas | No resuelven ningún problema real aquí, y ElastiCache costaría 6× el presupuesto |
+| [0006](docs/adr/0006-sin-cache-y-sin-colas.md) | Sin caché y sin colas | No resuelven ningún problema real aquí, y ElastiCache costaría el doble del presupuesto |
 | [0007](docs/adr/0007-idioma-de-la-documentacion.md) | Idioma de la documentación | Prosa en español, identificadores en inglés |
 | [0008](docs/adr/0008-semilla-de-fase-y-grupo.md) | Semilla de fase y grupo | Dato verificado del sorteo oficial, con camino de reserva que nunca falla |
 | [0009](docs/adr/0009-publicacion-de-eventos-diferida.md) | Publicación de eventos diferida | EventBridge/SNS documentado como mejora futura, no implementado |

@@ -19,8 +19,8 @@ comportamiento real del servicio.
 
 | Alternativa | Qué resolvería aquí | Coste real |
 |---|---|---|
-| ElastiCache (Redis) para el catálogo de eventos | Nada: el catálogo ya está en memoria del proceso | ElastiCache obliga a colocar Lambda dentro de una VPC. Una función en VPC pierde la salida a internet, por lo que el acceso saliente exige un NAT gateway: ≈ **32 USD/mes**, más de **6 veces** el tope de presupuesto completo |
-| ElastiCache para el saldo | Empeoraría la corrección: introduciría una copia del saldo fuera de la transacción atómica | Mismo coste de VPC y NAT, con un riesgo de consistencia añadido |
+| ElastiCache (Redis) para el catálogo de eventos | Nada: el catálogo ya está en memoria del proceso | El propio clúster: un `cache.t4g.micro` encendido de forma permanente ronda los **12 USD/mes**, más del **doble** del tope de presupuesto completo. Su capa gratuita dura 12 meses, no es permanente (mismo motivo por el que el ADR-0004 descarta ECR) |
+| ElastiCache para el saldo | Empeoraría la corrección: introduciría una copia del saldo fuera de la transacción atómica | Mismo coste del clúster, con un riesgo de consistencia añadido |
 | Caché HTTP (`Cache-Control`) en las rutas de catálogo | Reduciría solicitudes repetidas desde un mismo cliente | Coste cero, pero no aporta a lo evaluado; se anota como mejora trivial, no se implementa |
 
 Una caché resuelve el problema de una lectura **cara**. En este servicio la lectura del
@@ -29,6 +29,26 @@ de red, sin serialización. Poner Redis delante de eso añadiría latencia de re
 operación que hoy no la tiene, además de una infraestructura con coste. La lectura del
 saldo, la única que sí atraviesa la red, **no debe** cachearse: es exactamente el valor
 cuya exactitud garantiza la condición de la transacción (ADR-0003).
+
+**Sobre la VPC que ElastiCache arrastra**, conviene ser preciso en lugar de repetir el
+argumento genérico. ElastiCache solo es alcanzable desde dentro de una VPC, así que sí
+obligaría a adjuntar la función a una. Ahora bien:
+
+- **La puerta de entrada no se ve afectada.** Una Lambda en VPC se sigue invocando a
+  través del plano de control del servicio Lambda, no por la red de la VPC. Tanto la
+  Function URL como la API Gateway de reserva (ADR-0004) funcionan igual con una función
+  adjunta a una VPC: el NAT gateway es un asunto de **salida**, no de entrada.
+- **El NAT gateway sería evitable aquí.** La única dependencia saliente del binario es
+  DynamoDB, y DynamoDB dispone de un *Gateway VPC Endpoint* **sin coste** —ni por hora
+  ni por datos procesados—; CloudWatch Logs sigue funcionando porque los entrega el
+  propio servicio Lambda y no la interfaz de red de la función. Un NAT gateway
+  (≈ 32 USD/mes) solo haría falta para un tercer destino en internet que este servicio
+  no tiene.
+
+Es decir: el coste que descarta ElastiCache es **el del propio clúster**, no el de una
+infraestructura de red que podría evitarse. El argumento económico es más pequeño de lo
+que sugeriría la cifra del NAT, y precisamente por eso es más sólido: no depende de un
+componente que un lector informado señalaría como innecesario.
 
 ### Colas
 
@@ -49,9 +69,9 @@ bastaría por sí solo:
 2. **De diseño**: la colocación de una apuesta es una operación síncrona por naturaleza,
    ya que el usuario necesita una confirmación inmediata del débito. Una cola no
    eliminaría la necesidad de la escritura condicional atómica.
-3. **Económico**: ElastiCache arrastraría VPC y NAT gateway por ≈ 32 USD/mes, más de
-   seis veces el presupuesto total del proyecto, para resolver un problema que no
-   existe.
+3. **Económico**: el clúster de ElastiCache más pequeño encendido de forma permanente
+   ronda los 12 USD/mes, más del doble del presupuesto total del proyecto y con una capa
+   gratuita que caduca a los 12 meses, para resolver un problema que no existe.
 
 ## Consecuencias
 
