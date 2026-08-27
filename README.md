@@ -5,6 +5,38 @@ simples y combinadas, y permite colocarlas descontando el saldo del usuario de f
 **segura ante concurrencia**. Arquitectura hexagonal, un único binario, desplegable en
 AWS con coste de 0 USD al mes.
 
+## Demostración en vivo
+
+Desplegada en AWS y funcionando. No hace falta clonar ni instalar nada para verla:
+
+| | |
+|---|---|
+| **Aplicación web** | **<https://qjdzac3mg6.execute-api.us-east-1.amazonaws.com/app>** |
+| **Documentación interactiva (Swagger UI)** | <https://qjdzac3mg6.execute-api.us-east-1.amazonaws.com/docs> |
+| Especificación OpenAPI 3 | <https://qjdzac3mg6.execute-api.us-east-1.amazonaws.com/openapi.yaml> |
+| Sonda de vida | <https://qjdzac3mg6.execute-api.us-east-1.amazonaws.com/health> |
+
+**Credenciales de demostración**: `demo1@apuestatotal.com` / `Demo1234!`
+(también `demo2@`, ambas con S/ 1000.00 de saldo inicial).
+
+Todo lo que se ve ahí sale de **un único binario de Go**: la aplicación web viene
+embebida en él con `go:embed`, igual que Swagger UI y el catálogo de eventos. No hay
+S3, ni CloudFront, ni una canalización de compilación de frontend. Las apuestas que se
+coloquen son reales y descuentan saldo en DynamoDB.
+
+Dentro del cupón, el botón **«Probar concurrencia: 2 apuestas simultáneas»** lanza dos
+colocaciones idénticas a la vez con claves de idempotencia distintas: con un monto que
+el saldo financia una sola vez, exactamente una se acepta y la otra se rechaza, y el
+saldo refleja un único débito. Es el requisito de concurrencia hecho visible.
+
+> Esta cuenta de AWS tiene restringidas las Lambda Function URLs, de modo que el
+> despliegue recurrió automáticamente a una HTTP API Gateway —de ahí la forma del
+> enlace—. El porqué, con la evidencia que lo demuestra, está en la
+> [sección 8](#cuando-la-cuenta-restringe-las-function-urls). Reproducir este mismo
+> despliegue en otra cuenta es un comando: `scripts/deploy-aws.sh`.
+
+---
+
 > **Nota de idioma**: la documentación de este repositorio (este README, los nueve ADR
 > de `docs/adr/` y las descripciones de la especificación OpenAPI) está redactada en
 > **español**, para que el equipo evaluador pueda revisar las decisiones de diseño con
@@ -17,6 +49,7 @@ AWS con coste de 0 USD al mes.
 
 ## Índice
 
+0. [**Demostración en vivo**](#demostración-en-vivo) — la aplicación desplegada, sin instalar nada
 1. [Inicio rápido](#1-inicio-rápido)
 2. [Endpoints y ejemplos con curl](#2-endpoints-y-ejemplos-con-curl)
 3. [Variables de entorno](#3-variables-de-entorno)
@@ -1171,6 +1204,8 @@ git log --oneline --reverse --format='%s' | grep -E '^(test|feat)' | head -20
 ## 13. Checklist de entrega
 
 - [x] Repositorio público con el código completo
+- [x] **Demostración desplegada y accesible**: aplicación web, Swagger UI y API en
+      <https://qjdzac3mg6.execute-api.us-east-1.amazonaws.com>
 - [x] `docker compose up --build` levanta todo el entorno con un solo comando
 - [x] README en español con inicio rápido, endpoints, variables de entorno y decisiones
 - [x] Nueve ADR documentando cada decisión de arquitectura
