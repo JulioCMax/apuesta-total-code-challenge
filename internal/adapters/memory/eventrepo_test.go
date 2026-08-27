@@ -134,6 +134,12 @@ func TestSelectionsByIDs_ResolvesRealSelectionRef(t *testing.T) {
 	require.Equal(t, "784926067864698880", refs[0].EventID)
 	require.Equal(t, "1.47", refs[0].Odds.String())
 	require.False(t, refs[0].IsDisabled)
+	// México vs Sudáfrica's Settings.IsBetBuilderEnabled is true in
+	// data.json, and this is a real seeded event (all 24 carry the flag
+	// true), so the propagated flag must be true here too (spec:
+	// events-catalog/SelectionRef Carries Bet Builder Eligibility,
+	// "Selection from a real seeded event").
+	require.True(t, refs[0].EventBetBuilderEnabled)
 }
 
 // TestSelectionsByIDs_UnknownIDReturnsTypedError proves an unresolved

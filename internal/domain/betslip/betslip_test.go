@@ -1,6 +1,7 @@
 package betslip_test
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -147,6 +148,143 @@ func TestQuote_RejectsDisabledSelection(t *testing.T) {
 	_, err := slip.Quote(mustMoney(t, minStakeFixture), mustMoney(t, maxStakeFixture), maxSelectionsFixture)
 
 	require.ErrorIs(t, err, betslip.ErrSelectionUnavailable)
+}
+
+// TestQuote_BetBuilderOptInOnEnabledEventAllowsCombo proves opting into Bet
+// Builder for a same-event combo whose owning event has Bet Builder
+// enabled bypasses ErrSameEventCombo and prices through money.Combine
+// exactly like any other combo (spec: bet-slip-calculation/Same-Event
+// Combo Rejection, "Bet Builder opt-in on an enabled event"; design: Bet
+// Builder rule).
+func TestQuote_BetBuilderOptInOnEnabledEventAllowsCombo(t *testing.T) {
+	sel1 := newSelection(t, "sel-1", "evt-1", "1.85")
+	sel1.EventBetBuilderEnabled = true
+	sel2 := newSelection(t, "sel-2", "evt-1", "2.10")
+	sel2.EventBetBuilderEnabled = true
+	slip := betslip.BetSlip{
+		Selections:          []event.SelectionRef{sel1, sel2},
+		Stake:               mustMoney(t, "100.00"),
+		AllowSameEventCombo: true,
+	}
+
+	quote, err := slip.Quote(mustMoney(t, minStakeFixture), mustMoney(t, maxStakeFixture), maxSelectionsFixture)
+
+	require.NoError(t, err)
+	require.Len(t, quote.Singles, 2)
+	require.NotNil(t, quote.Combo)
+	// 1.85 * 2.10 = 3.885 -> Round2 (half-up) -> 3.89, same product rule as
+	// any other combo — Bet Builder never re-derives pricing.
+	require.Equal(t, "3.89", quote.Combo.Odds.String())
+}
+
+// TestQuote_BetBuilderOptInOnDisabledEventReturnsTypedError proves opting
+// in for a same-event combo whose owning event has Bet Builder DISABLED is
+// refused with the distinct ErrBetBuilderNotAvailable error — never the
+// generic ErrSameEventCombo — because a caller who asked explicitly
+// deserves to know why (spec: bet-slip-calculation/Same-Event Combo
+// Rejection, "Bet Builder opt-in on a disabled event"; design: Bet Builder
+// rule). All 24 real seeded events carry the flag true, so this branch is
+// proven against a synthetic fixture built directly here — no fixture file
+// needed, since BetSlip takes []SelectionRef as data.
+func TestQuote_BetBuilderOptInOnDisabledEventReturnsTypedError(t *testing.T) {
+	sel1 := newSelection(t, "sel-1", "evt-1", "1.85")
+	sel1.EventBetBuilderEnabled = false
+	sel2 := newSelection(t, "sel-2", "evt-1", "2.10")
+	sel2.EventBetBuilderEnabled = false
+	slip := betslip.BetSlip{
+		Selections:          []event.SelectionRef{sel1, sel2},
+		Stake:               mustMoney(t, "100.00"),
+		AllowSameEventCombo: true,
+	}
+
+	_, err := slip.Quote(mustMoney(t, minStakeFixture), mustMoney(t, maxStakeFixture), maxSelectionsFixture)
+
+	require.Error(t, err)
+	var notAvailable betslip.ErrBetBuilderNotAvailable
+	require.ErrorAs(t, err, &notAvailable)
+	require.Equal(t, "evt-1", notAvailable.EventID)
+
+	var sameEvent betslip.ErrSameEventCombo
+	require.False(t, errors.As(err, &sameEvent), "opt-in on a disabled event must not fall back to ErrSameEventCombo")
+}
+
+// TestQuote_RejectsSameEventCombo_UnaffectedByBetBuilderFields is the
+// regression proof (strict TDD's Safety Net): the pre-existing default-path
+// test above (TestQuote_RejectsSameEventCombo) already covers the
+// zero-value case; this covers a selection that DOES carry
+// EventBetBuilderEnabled=true but whose caller never opted in
+// (AllowSameEventCombo defaults false) — the event's own flag must never
+// substitute for the caller's explicit opt-in.
+func TestQuote_RejectsSameEventCombo_UnaffectedByBetBuilderFields(t *testing.T) {
+	sel1 := newSelection(t, "sel-1", "evt-1", "1.85")
+	sel1.EventBetBuilderEnabled = true
+	sel2 := newSelection(t, "sel-2", "evt-1", "2.10")
+	sel2.EventBetBuilderEnabled = true
+	slip := betslip.BetSlip{
+		Selections: []event.SelectionRef{sel1, sel2},
+		Stake:      mustMoney(t, "100.00"),
+		// AllowSameEventCombo intentionally omitted (zero value: false).
+	}
+
+	_, err := slip.Quote(mustMoney(t, minStakeFixture), mustMoney(t, maxStakeFixture), maxSelectionsFixture)
+
+	var sameEvent betslip.ErrSameEventCombo
+	require.ErrorAs(t, err, &sameEvent)
+	require.Equal(t, "evt-1", sameEvent.EventID)
+}
+
+// TestQuote_BetBuilderOptIn_EveryDuplicatedEventMustAllowIt is the
+// real-defect regression proof: a slip with 2+ duplicated selections from
+// an enabled event AND 2+ duplicated selections from a disabled event must
+// be refused with ErrBetBuilderNotAvailable naming the disabled event,
+// regardless of which group of selections comes first. The pre-fix code
+// captured only the FIRST duplicated event it encountered and consulted
+// the Bet Builder flag for that one event alone, so an enabled-first
+// ordering wrongly fell through and priced the disabled group's combo too
+// (spec: bet-slip-calculation/Same-Event Combo Rejection; design: Bet
+// Builder rule).
+func TestQuote_BetBuilderOptIn_EveryDuplicatedEventMustAllowIt(t *testing.T) {
+	enabledA := newSelection(t, "enabled-a1", "evt-enabled", "1.85")
+	enabledA.EventBetBuilderEnabled = true
+	enabledB := newSelection(t, "enabled-a2", "evt-enabled", "2.10")
+	enabledB.EventBetBuilderEnabled = true
+
+	disabledA := newSelection(t, "disabled-b1", "evt-disabled", "1.50")
+	disabledA.EventBetBuilderEnabled = false
+	disabledB := newSelection(t, "disabled-b2", "evt-disabled", "1.60")
+	disabledB.EventBetBuilderEnabled = false
+
+	tests := []struct {
+		name       string
+		selections []event.SelectionRef
+	}{
+		{
+			name:       "enabled group first",
+			selections: []event.SelectionRef{enabledA, enabledB, disabledA, disabledB},
+		},
+		{
+			name:       "disabled group first",
+			selections: []event.SelectionRef{disabledA, disabledB, enabledA, enabledB},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			slip := betslip.BetSlip{
+				Selections:          tt.selections,
+				Stake:               mustMoney(t, "100.00"),
+				AllowSameEventCombo: true,
+			}
+
+			_, err := slip.Quote(mustMoney(t, minStakeFixture), mustMoney(t, maxStakeFixture), maxSelectionsFixture)
+
+			require.Error(t, err)
+			var notAvailable betslip.ErrBetBuilderNotAvailable
+			require.ErrorAs(t, err, &notAvailable)
+			require.Equal(t, "evt-disabled", notAvailable.EventID,
+				"outcome must not depend on selection order")
+		})
+	}
 }
 
 // TestQuote_StakeBounds proves the stake is validated against the

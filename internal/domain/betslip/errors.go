@@ -53,6 +53,20 @@ func (e ErrSameEventCombo) Error() string {
 	return fmt.Sprintf("betslip: combo rejected, event %s repeated", e.EventID)
 }
 
+// ErrBetBuilderNotAvailable is returned when the caller explicitly opts
+// into Bet Builder (BetSlip.AllowSameEventCombo) for a same-event combo
+// whose owning event has Bet Builder disabled. Deliberately distinct from
+// ErrSameEventCombo: a caller who asked explicitly deserves to know why
+// the combo was refused, rather than being told the generic same-event
+// rule (design: Bet Builder rule).
+type ErrBetBuilderNotAvailable struct {
+	EventID string
+}
+
+func (e ErrBetBuilderNotAvailable) Error() string {
+	return fmt.Sprintf("betslip: bet builder not available for event %s", e.EventID)
+}
+
 // StakeOutOfRangeError is returned when the requested stake falls outside
 // the configured [Min, Max] bounds.
 type StakeOutOfRangeError struct {
