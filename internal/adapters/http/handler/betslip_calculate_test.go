@@ -145,6 +145,87 @@ func TestCalculate_SameEventReturns422Envelope(t *testing.T) {
 	require.Equal(t, "e1", errObj["details"].(map[string]any)["eventId"])
 }
 
+// TestCalculate_BetBuilderOptInAllowsSameEventCombo proves isBetBuilder
+// threads through the HTTP layer and allows a same-event combo when the
+// event itself has Bet Builder enabled (spec: bet-slip-calculation/Same-
+// Event Combo Rejection, "Bet Builder opt-in on an enabled event"; /Bet
+// Builder Explicit UI Affordance).
+func TestCalculate_BetBuilderOptInAllowsSameEventCombo(t *testing.T) {
+	catalog := newFakeCatalog(
+		domainevent.SelectionRef{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.85), EventBetBuilderEnabled: true},
+		domainevent.SelectionRef{ID: "s2", EventID: "e1", Odds: mustOdds(t, 2.10), EventBetBuilderEnabled: true},
+	)
+	r := newCalculateRouter(catalog, testBounds(t))
+
+	w := doJSON(t, r, http.MethodPost, "/betslip/calculate", `{"selectionIds":["s1","s2"],"stake":100,"isBetBuilder":true}`)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.NotNil(t, body["combo"])
+}
+
+// TestCalculate_BetBuilderOptInOnDisabledEventReturns422BetBuilderNotAvailable
+// proves the mandatory Phase 2 gap: opting into Bet Builder for an event
+// whose Bet Builder is disabled classifies as the distinct
+// BET_BUILDER_NOT_AVAILABLE code, never falling through to SAME_EVENT_COMBO
+// or an unclassified error (design.md's apperror.Classify table;
+// domain/betslip.ErrBetBuilderNotAvailable).
+func TestCalculate_BetBuilderOptInOnDisabledEventReturns422BetBuilderNotAvailable(t *testing.T) {
+	catalog := newFakeCatalog(
+		domainevent.SelectionRef{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.85), EventBetBuilderEnabled: false},
+		domainevent.SelectionRef{ID: "s2", EventID: "e1", Odds: mustOdds(t, 2.10), EventBetBuilderEnabled: false},
+	)
+	r := newCalculateRouter(catalog, testBounds(t))
+
+	w := doJSON(t, r, http.MethodPost, "/betslip/calculate", `{"selectionIds":["s1","s2"],"stake":100,"isBetBuilder":true}`)
+
+	require.Equal(t, http.StatusUnprocessableEntity, w.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	errObj := body["error"].(map[string]any)
+	require.Equal(t, "BET_BUILDER_NOT_AVAILABLE", errObj["code"])
+	require.Equal(t, "e1", errObj["details"].(map[string]any)["eventId"])
+}
+
+// TestCalculate_BoostedSelectionExposesOriginalOddsInResponse proves a
+// resolved selection carrying a Super Cuota boost renders both odds and a
+// distinct originalOdds in the JSON response (spec: bet-slip-calculation/
+// Boosted Selection Exposes Original Odds).
+func TestCalculate_BoostedSelectionExposesOriginalOddsInResponse(t *testing.T) {
+	original := mustOdds(t, 1.47)
+	catalog := newFakeCatalog(domainevent.SelectionRef{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.60), OriginalOdds: &original})
+	r := newCalculateRouter(catalog, testBounds(t))
+
+	w := doJSON(t, r, http.MethodPost, "/betslip/calculate", `{"selectionIds":["s1"],"stake":100}`)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	selections := body["selections"].([]any)
+	require.Len(t, selections, 1)
+	sel := selections[0].(map[string]any)
+	require.InDelta(t, 1.60, sel["odds"], 0.001)
+	require.InDelta(t, 1.47, sel["originalOdds"], 0.001)
+}
+
+// TestCalculate_NonBoostedSelectionOmitsOriginalOddsInResponse proves a
+// non-boosted selection never renders originalOdds at all (spec: bet-slip-
+// calculation/Boosted Selection Exposes Original Odds, "Non-boosted
+// selection resolved").
+func TestCalculate_NonBoostedSelectionOmitsOriginalOddsInResponse(t *testing.T) {
+	catalog := newFakeCatalog(domainevent.SelectionRef{ID: "s1", EventID: "e1", Odds: mustOdds(t, 1.85)})
+	r := newCalculateRouter(catalog, testBounds(t))
+
+	w := doJSON(t, r, http.MethodPost, "/betslip/calculate", `{"selectionIds":["s1"],"stake":100}`)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	sel := body["selections"].([]any)[0].(map[string]any)
+	require.NotContains(t, sel, "originalOdds")
+}
+
 // TestCalculate_UnknownSelectionReturns422Envelope proves an unresolved
 // selection ID is a typed domain error, not a generic 400 (spec: bet-slip-
 // calculation/Selection Resolution).

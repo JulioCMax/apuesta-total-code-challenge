@@ -58,6 +58,12 @@ type EventSelectionResponse struct {
 	Line       *string    `json:"line,omitempty"`
 	Odds       money.Odds `json:"odds"`
 	IsDisabled bool       `json:"isDisabled"`
+
+	// OriginalOdds is present only for a selection carrying a curated Super
+	// Cuota boost — omitted entirely (never null) otherwise, so the UI can
+	// show the improvement honestly (spec: events-catalog/Selection
+	// Exposes Original Odds When Boosted).
+	OriginalOdds *money.Odds `json:"originalOdds,omitempty"`
 }
 
 // MarketResponse is one market within an event detail response, already in
@@ -147,7 +153,10 @@ func selectionFromDomain(s domainevent.Selection) EventSelectionResponse {
 		v := s.Line.String()
 		line = &v
 	}
-	return EventSelectionResponse{ID: s.ID, Name: s.Name, Line: line, Odds: s.Odds, IsDisabled: s.IsDisabled}
+	return EventSelectionResponse{
+		ID: s.ID, Name: s.Name, Line: line, Odds: s.Odds, IsDisabled: s.IsDisabled,
+		OriginalOdds: s.OriginalOdds,
+	}
 }
 
 // --- BetSlip calculate ------------------------------------------------------
@@ -158,6 +167,11 @@ type ResolvedSelectionResponse struct {
 	ID      string     `json:"id"`
 	EventID string     `json:"eventId"`
 	Odds    money.Odds `json:"odds"`
+
+	// OriginalOdds mirrors EventSelectionResponse.OriginalOdds: present
+	// only when this selection carries a Super Cuota boost (spec: bet-
+	// slip-calculation/Boosted Selection Exposes Original Odds).
+	OriginalOdds *money.Odds `json:"originalOdds,omitempty"`
 }
 
 // SingleResponse is one priced Single leg.
@@ -193,7 +207,7 @@ type CalculateResponse struct {
 func CalculateResponseFromDomain(result appbetslip.CalculateResult) CalculateResponse {
 	selections := make([]ResolvedSelectionResponse, 0, len(result.Selections))
 	for _, s := range result.Selections {
-		selections = append(selections, ResolvedSelectionResponse{ID: s.ID, EventID: s.EventID, Odds: s.Odds})
+		selections = append(selections, ResolvedSelectionResponse{ID: s.ID, EventID: s.EventID, Odds: s.Odds, OriginalOdds: s.OriginalOdds})
 	}
 
 	singles := make([]SingleResponse, 0, len(result.Quote.Singles))

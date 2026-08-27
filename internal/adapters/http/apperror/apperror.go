@@ -81,6 +81,7 @@ func WriteDetails(c *gin.Context, status int, code, message string, details map[
 // callers must never leak an unmapped error's own message to the caller.
 func Classify(err error) (status int, code, message string, details map[string]any) {
 	var sameEvent domainbetslip.ErrSameEventCombo
+	var betBuilderNotAvailable domainbetslip.ErrBetBuilderNotAvailable
 	var stakeRange domainbetslip.StakeOutOfRangeError
 	var selNotFound domainbetslip.ErrSelectionNotFound
 	var insufficientFunds domainbetslip.ErrInsufficientFunds
@@ -97,6 +98,10 @@ func Classify(err error) (status int, code, message string, details map[string]a
 	case errors.As(err, &sameEvent):
 		return http.StatusUnprocessableEntity, "SAME_EVENT_COMBO", "La combinada no puede incluir dos selecciones del mismo evento.", map[string]any{
 			"eventId": sameEvent.EventID,
+		}
+	case errors.As(err, &betBuilderNotAvailable):
+		return http.StatusUnprocessableEntity, "BET_BUILDER_NOT_AVAILABLE", "El Bet Builder no está disponible para este evento.", map[string]any{
+			"eventId": betBuilderNotAvailable.EventID,
 		}
 	case errors.As(err, &stakeRange):
 		return http.StatusUnprocessableEntity, "STAKE_OUT_OF_RANGE", "El monto de la apuesta está fuera del rango permitido.", map[string]any{

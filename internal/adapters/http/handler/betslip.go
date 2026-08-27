@@ -88,6 +88,7 @@ func (h *BetSlip) Calculate(c *gin.Context) {
 	result, err := h.calculate.Execute(c.Request.Context(), appbetslip.CalculateCommand{
 		SelectionIDs: req.SelectionIDs,
 		Stake:        stake,
+		IsBetBuilder: req.IsBetBuilder,
 	})
 	if err != nil {
 		apperror.Write(c, err)
@@ -132,6 +133,7 @@ func (h *BetSlip) Place(c *gin.Context) {
 		SelectionIDs:   req.SelectionIDs,
 		Stake:          stake,
 		IdempotencyKey: idempotencyKey,
+		IsBetBuilder:   req.IsBetBuilder,
 	})
 	if err != nil {
 		apperror.Write(c, err)
