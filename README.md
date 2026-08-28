@@ -1592,7 +1592,6 @@ compañero no puede deducir del diff.
       pasa contra la URL pública (login, cálculo, colocación y saldo)
 - [x] **Cifra de arranque en frío medida y anotada** en la
       [sección 8](#8-despliegue-en-aws-y-coste)
-- [ ] **Enviar el enlace del repositorio a `jimmy.sandoval@apuestatotal.com`**
 
 Los tres últimos puntos requieren credenciales de AWS propias y una acción personal, por
 lo que quedan fuera de lo automatizable en este repositorio.
